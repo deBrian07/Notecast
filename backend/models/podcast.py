@@ -1,21 +1,13 @@
-from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, Text, Float
+from sqlalchemy import Column, Integer, String, Text, ForeignKey
 from sqlalchemy.orm import relationship
-from datetime import datetime
-from models.database import Base, SessionLocal
+from .database import Base
 
 class Podcast(Base):
     __tablename__ = "podcasts"
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    document_id = Column(Integer, ForeignKey("documents.id"), nullable=False)
+    id   = Column(Integer, primary_key=True, index=True)
     title = Column(String, nullable=False)
-    script_text = Column(Text, nullable=False)
-    audio_filename = Column(String, unique=True, nullable=False)
-    duration = Column(Float, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-    user = relationship("User")
-    document = relationship("Document")
+    description = Column(Text)
+    episodes = relationship("Episode", back_populates="podcast")
 
 
 def create_podcast(user_id: int, document_id: int, title: str, script_text: str, audio_filename: str, duration: float = None):

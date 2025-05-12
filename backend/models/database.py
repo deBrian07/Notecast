@@ -26,5 +26,8 @@ AsyncSessionLocal = sessionmaker(
     autocommit=False
 )
 
+# For backward compatibility if code imports SessionLocal
+SessionLocal = AsyncSessionLocal
+
 # Base class for ORM models
 Base = declarative_base()
