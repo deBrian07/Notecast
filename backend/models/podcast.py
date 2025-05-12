@@ -1,3 +1,5 @@
+from datetime import datetime
+from xmlrpc.client import DateTime
 from sqlalchemy import Column, Integer, String, Text, ForeignKey
 from sqlalchemy.orm import relationship
 from .database import Base
@@ -6,7 +8,9 @@ class Podcast(Base):
     __tablename__ = "podcasts"
     id   = Column(Integer, primary_key=True, index=True)
     title = Column(String, nullable=False)
-    description = Column(Text)
+    description = Column(Text, nullable=True)
+    audio_filename = Column(String, nullable=True)
+    user_id    = Column(Integer, ForeignKey("users.id"), nullable=False)
     # episodes = relationship("Episode", back_populates="podcast")
 
 

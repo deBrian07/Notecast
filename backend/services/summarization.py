@@ -1,22 +1,17 @@
 import requests
 from core.config import settings
 
-def generate_summary(text: str) -> str:
-    system = (
-        "You are an AI that writes a podcast-style summary as a dialogue between two hosts. "
-        "Keep it engaging and concise."
-    )
+OLLAMA_CHAT_URL = f"{settings.ollama_url.rstrip('/')}/api/chat"
+
+def generate_summary(text: str, model: str | None = None) -> str:
     payload = {
-        "model": settings.OLLAMA_MODEL,
+        "model": model or settings.ollama_model,   # e.g. qwen3:14b
         "messages": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": text}
+            {"role": "system", "content": "Summarize the following document:"},
+            {"role": "user",   "content": text}
         ],
-        "temperature": 0.7,
         "stream": False
     }
-    url = f"{settings.OLLAMA_URL}/v1/chat/completions"
-    resp = requests.post(url, json=payload)
-    resp.raise_for_status()
-    data = resp.json()
-    return data["choices"][0]["message"]["content"]
+    resp = requests.post(OLLAMA_CHAT_URL, json=payload, timeout=120)
+    resp.raise_for_status()                       # will raise 404 if URL wrong
+    return resp.json()["message"]["content"]

@@ -1,10 +1,14 @@
+import os
+
+from pytest import Session
+from models.database import get_db
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from fastapi.responses import FileResponse
 from typing import List
 from core.security import get_current_user
 from models.user import User
 from models.document import get_document_by_id
-from models.podcast import create_podcast, get_podcasts_for_user, get_podcast_by_id
+from models.podcast import Podcast, create_podcast, get_podcasts_for_user, get_podcast_by_id
 from models.schemas import PodcastBase
 from services.file_service import get_document_text
 from services.summarization import generate_summary
@@ -24,9 +28,10 @@ def start_podcast_generation(
     background_tasks.add_task(_process_generation, current_user.id, doc)
     return {"detail": "Podcast generation started"}
 
-@router.get("", response_model=List[PodcastBase])
-def list_podcasts(current_user: User = Depends(get_current_user)):
-    return get_podcasts_for_user(current_user.id)
+@router.get("/")
+def list_podcasts(db: Session = Depends(get_db),
+                  current_user: User = Depends(get_current_user)):
+    return db.query(Podcast).filter(Podcast.user_id == current_user.id).all()
 
 @router.get("/{podcast_id}/audio")
 def fetch_podcast_audio(podcast_id: int, current_user: User = Depends(get_current_user)):
