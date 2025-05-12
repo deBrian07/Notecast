@@ -2,10 +2,24 @@ from fastapi import FastAPI
 from routers import auth, documents, generate as generate_router
 import uvicorn
 
+from fastapi.middleware.cors import CORSMiddleware
+
 app = FastAPI(
     title="Notecast API",
     description="Backend for the Notecast application",
     version="1.0.0"
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+      "https://notecast.infinia.chat",
+      "https://api.infinia.chat",   # if you ever call from the API domain itself
+      "http://localhost:5173"        # for local dev
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Health check endpoints
@@ -18,7 +32,7 @@ async def root():
     return {"message": "Welcome to Notecast API"}
 
 # Include routers
-app.include_router(auth.router, prefix="/auth", tags=["Auth"])
+app.include_router(auth.router)
 app.include_router(documents.router, prefix="/documents", tags=["Documents"])
 app.include_router(generate_router.router, prefix="/generate", tags=["Generate"])
 

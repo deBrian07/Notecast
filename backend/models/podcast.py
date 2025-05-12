@@ -7,7 +7,7 @@ class Podcast(Base):
     id   = Column(Integer, primary_key=True, index=True)
     title = Column(String, nullable=False)
     description = Column(Text)
-    episodes = relationship("Episode", back_populates="podcast")
+    # episodes = relationship("Episode", back_populates="podcast")
 
 
 def create_podcast(user_id: int, document_id: int, title: str, script_text: str, audio_filename: str, duration: float = None):
