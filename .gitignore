@@ -26,3 +26,8 @@ yarn-error.log*
 /backend/models/__pycache__
 /client/node_modules
 /client/dist
+
+/backend/data
+
+__pycache__/
+*.py[cod]

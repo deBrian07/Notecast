@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from routers import auth, documents, generate as generate_router
+from routers.tts import router as tts_router
 import uvicorn
 
 from fastapi.middleware.cors import CORSMiddleware
@@ -35,6 +36,7 @@ async def root():
 app.include_router(auth.router)
 app.include_router(documents.router)          # router already has prefix
 app.include_router(generate_router.router)
+app.include_router(tts_router)
 
 if __name__ == "__main__":
     uvicorn.run(
