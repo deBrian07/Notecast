@@ -4,7 +4,7 @@ from PyPDF2 import PdfReader
 from docx import Document as DocxDocument
 
 def get_document_text(user_id: int, stored_filename: str) -> str:
-    path = os.path.join(settings.UPLOAD_DIR, str(user_id), stored_filename)
+    path = os.path.join(settings.upload_dir, str(user_id), stored_filename)
     ext = os.path.splitext(stored_filename)[1].lower()
     if ext == ".pdf":
         reader = PdfReader(path)

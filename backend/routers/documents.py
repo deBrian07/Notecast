@@ -17,7 +17,7 @@ def upload_document(
     ext = os.path.splitext(file.filename)[1].lower()
     if ext not in [".pdf", ".docx"]:
         raise HTTPException(status_code=400, detail="Invalid file type")
-    user_dir = os.path.join(settings.UPLOAD_DIR, str(current_user.id))
+    user_dir = os.path.join(settings.upload_dir, str(current_user.id))
     os.makedirs(user_dir, exist_ok=True)
     unique_name = f"{uuid.uuid4()}{ext}"
     path = os.path.join(user_dir, unique_name)
@@ -40,7 +40,7 @@ def download_document(doc_id: int, current_user: User = Depends(get_current_user
     doc = get_document_by_id(doc_id)
     if not doc or doc.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Document not found")
-    path = os.path.join(settings.UPLOAD_DIR, str(current_user.id), doc.stored_filename)
+    path = os.path.join(settings.upload_dir, str(current_user.id), doc.stored_filename)
     return FileResponse(path, media_type="application/octet-stream", filename=doc.orig_filename)
 
 @router.delete("/{doc_id}")
@@ -49,7 +49,7 @@ def delete_document_route(doc_id: int, current_user: User = Depends(get_current_
     if not doc or doc.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Document not found")
     delete_document(doc_id)
-    path = os.path.join(settings.UPLOAD_DIR, str(current_user.id), doc.stored_filename)
+    path = os.path.join(settings.upload_dir, str(current_user.id), doc.stored_filename)
     if os.path.exists(path):
         os.remove(path)
     return {"detail": "Document deleted"}

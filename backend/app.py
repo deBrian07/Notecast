@@ -33,8 +33,8 @@ async def root():
 
 # Include routers
 app.include_router(auth.router)
-app.include_router(documents.router, prefix="/documents", tags=["Documents"])
-app.include_router(generate_router.router, prefix="/generate", tags=["Generate"])
+app.include_router(documents.router)          # router already has prefix
+app.include_router(generate_router.router)
 
 if __name__ == "__main__":
     uvicorn.run(
