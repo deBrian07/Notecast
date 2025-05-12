@@ -27,7 +27,7 @@ export default function Login() {
         { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
       );
       localStorage.setItem('token', data.access_token);
-      nav('/app');
+      window.location = '/app'; 
     } catch (err) {
       alert('Login failed: ' + (err.response?.data?.detail || err.message));
     }
