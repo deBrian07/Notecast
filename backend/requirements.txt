@@ -1,0 +1,12 @@
+fastapi
+uvicorn[standard]
+python-multipart
+SQLAlchemy
+pydantic
+passlib[bcrypt]
+python-jose[cryptography]
+requests
+PyPDF2
+python-docx
+pydub
+tortoise-tts
