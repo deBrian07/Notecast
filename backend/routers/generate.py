@@ -11,7 +11,7 @@ from models.document import get_document_by_id
 from models.podcast import Podcast, create_podcast, get_podcasts_for_user, get_podcast_by_id
 from models.schemas import PodcastBase
 from services.file_service import get_document_text
-from services.summarization import generate_summary
+from services.summarization import generate_podcast_script, generate_summary
 from services.tts import synthesize_podcast_audio
 
 router = APIRouter(prefix="/generate", tags=["generate"])
@@ -45,7 +45,8 @@ def _process_generation(user_id: int, doc):
     # 1. Extract text
     text = get_document_text(user_id, doc.stored_filename)
     # 2. Generate script
-    script = generate_summary(text)
+    summary = generate_summary(text)
+    script  = generate_podcast_script(summary)
     # 3. Produce audio
     audio_path, duration = synthesize_podcast_audio(user_id, doc.id, script)
     # 4. Store record
