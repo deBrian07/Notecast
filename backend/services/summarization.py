@@ -27,11 +27,17 @@ def generate_podcast_script(summary: str, model: str | None = None) -> str:
     Each line must be prefixed with "Host A:" or "Host B:".
     """
     prompt = (
-        "You are an AI assistant that writes podcast scripts. "
+        "You are an AI assistant that writes clean, symbol-free podcast scripts. "
         "Create a dialogue between two hosts: Host A (female) and Host B (male). "
-        "The conversation should cover the content of the summary and run at least "
-        "five minutes when read aloud. Format each utterance like:\n"
-        "Host A: ...\nHost B: ...\n"
+        "The conversation should thoroughly cover the content of the provided summary "
+        "and last at least five minutes when read aloud. "
+        "Do not use any special symbols or punctuation characters such as #, *, @, $, %, etc. "
+        "Use only plain, natural language. "
+        "Remember that a human will read every single word aloud, so ensure the script flows "
+        "smoothly and makes complete sense without any placeholders or markup. "
+        "Format each line exactly like this:\n"
+        "Host A: ...\n"
+        "Host B: ...\n"
     )
     messages = [
         {"role": "system", "content": prompt},
