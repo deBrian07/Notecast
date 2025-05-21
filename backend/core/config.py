@@ -16,6 +16,7 @@ try:
         ollama_model: str
         tts_voice_female: str
         tts_voice_male: str
+        tts_sample_rate: int
 
         model_config = SettingsConfigDict(
             env_file=".env",
@@ -39,6 +40,7 @@ except ImportError:
         ollama_model: str = Field(..., env="OLLAMA_MODEL")
         tts_voice_female: str = Field(..., env="TTS_VOICE_FEMALE")
         tts_voice_male: str   = Field(..., env="TTS_VOICE_MALE")
+        tts_sample_rate: int  = Field(..., env="TTS_SAMPLE_RATE")
 
         class Config:
             env_file = ".env"

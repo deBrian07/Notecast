@@ -6,43 +6,38 @@ from typing import List, Tuple, Dict
 import textwrap
 
 import numpy as np
-from pydub import AudioSegment
 import torch
+from pydub import AudioSegment
 from concurrent.futures import ThreadPoolExecutor
-
-# ---------------------------------------------------------------------------
-# Import the correct TTS class for any tortoise-tts version
-# ---------------------------------------------------------------------------
-try:
-    # Newer tortoise-tts (>=0.5.x)
-    from tortoise.api import TextToSpeech as _TTSClass
-except ImportError:
-    # Older tortoise-tts (<0.5)
-    from tortoise.api import Tortoise as _TTSClass  # type: ignore
+import nemo.collections.tts as nemo_tts
+from nemo.collections.tts.models import FastPitchModel, HifiGanModel
+from scipy.io import wavfile
 
 from core.config import settings
 
 # ---------------------------------------------------------------------------
 # Global TTS instances per GPU device
 # ---------------------------------------------------------------------------
-_tts_global: Dict[str, _TTSClass] = {}
+_tts_global: Dict[str, Tuple[FastPitchModel, HifiGanModel]] = {}
 
-def _get_tts(device_str: str = "cuda:0") -> _TTSClass:
+# Standard sample rate for NeMo TTS models
+NEMO_SAMPLE_RATE = 22050
+
+def _get_tts(device_str: str = "cuda:0") -> Tuple[FastPitchModel, HifiGanModel]:
     """
-    Return a TextToSpeech instance pinned to the given CUDA device.
+    Return a tuple of (FastPitch, HiFiGAN) models pinned to the given CUDA device.
     Instances are cached per device.
     """
     global _tts_global
     if device_str not in _tts_global:
-        # Create a new TTS instance
-        tts = _TTSClass()
-        # Move each internal module to the target device
+        # 1) pick the torch device
         dev = torch.device(device_str)
-        for name in ("autoregressive", "diffusion", "clvp", "cvvp", "vocoder"):  # sub-modules
-            module = getattr(tts, name, None)
-            if isinstance(module, torch.nn.Module):
-                module.to(dev)
-        _tts_global[device_str] = tts
+
+        # 2) load & pin both models to that device, in eval mode
+        fastpitch = FastPitchModel.from_pretrained("tts_en_fastpitch").to(dev).eval()
+        hifigan   = HifiGanModel.from_pretrained("tts_en_hifigan").to(dev).eval()
+        
+        _tts_global[device_str] = (fastpitch, hifigan)
     return _tts_global[device_str]
 
 # Ensure pydub knows where ffmpeg is
@@ -54,29 +49,37 @@ AudioSegment.converter = AudioSegment.converter or "/usr/bin/ffmpeg"
 
 def _synthesize_line(voice_preset: str, text: str, device_str: str) -> AudioSegment:
     print(f"[TTS] Synthesizing line → device: {device_str}, voice: {voice_preset}, text: {text[:100]}...")
-    # Bind to correct CUDA device
     torch.cuda.set_device(torch.device(device_str))
-    tts = _get_tts(device_str)
+    fastpitch, hifigan = _get_tts(device_str)
 
     # Prepare temp WAV path
     with NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
         wav_path = Path(tmp.name)
 
-    # Generate WAV: either direct-to-file or in-memory bytes
-    if hasattr(tts, "tts_to_file"):
-        tts.tts_to_file(
-            text=text,
-            voice_preset=voice_preset,
-            output_path=str(wav_path)
-        )
-    else:
-        try:
-            wav_bytes = tts.tts(text, voice_preset=voice_preset)
-        except (TypeError, ValueError):
-            wav_bytes = tts.tts(text)
-        if isinstance(wav_bytes, list):
-            wav_bytes = np.concatenate(wav_bytes).tobytes()
-        wav_path.write_bytes(wav_bytes)
+    # Generate WAV using NeMo
+    with torch.no_grad():
+        # tokenize/normalize your text
+        tokens = fastpitch.parse(text)
+        # generate a mel-spectrogram batch of shape [B, n_mels, T]
+        mel_spec = fastpitch.generate_spectrogram(tokens=tokens, speaker=0)
+        
+        # Convert mel spectrogram to audio using HiFiGAN
+        wav = hifigan.convert_spectrogram_to_audio(spec=mel_spec)
+        wav = wav.cpu().numpy()
+        
+        # Save as WAV file - ensure format is mono and 16-bit PCM
+        # Convert float32 [-1,1] to int16 [-32768,32767]
+        wav = np.clip(wav, -1.0, 1.0)
+        wav = (wav * 32767).astype(np.int16)
+        
+        # Ensure wav is mono (1D array)
+        if wav.ndim > 1:
+            wav = wav.squeeze()  # Remove singleton dimensions
+            if wav.ndim > 1:     # If still multi-dimensional, convert to mono
+                wav = wav.mean(axis=1)
+        
+        # Write WAV file with explicit parameters
+        wavfile.write(str(wav_path), NEMO_SAMPLE_RATE, wav)
 
     # Wait up to 30s for file to exist and contain data
     for _ in range(30):
@@ -87,9 +90,15 @@ def _synthesize_line(voice_preset: str, text: str, device_str: str) -> AudioSegm
         raise RuntimeError("TTS did not produce WAV file in time")
 
     # Load with pydub and add a short pause
-    audio = AudioSegment.from_wav(str(wav_path))
-    wav_path.unlink(missing_ok=True)
-    return audio + AudioSegment.silent(duration=400)
+    try:
+        audio = AudioSegment.from_file(str(wav_path), format="wav")
+        wav_path.unlink(missing_ok=True)
+        return audio + AudioSegment.silent(duration=400)
+    except Exception as e:
+        print(f"Error loading WAV file: {e}")
+        # Fall back to a silent audio segment if loading fails
+        wav_path.unlink(missing_ok=True)
+        return AudioSegment.silent(duration=1000)  # 1 second of silence as fallback
 
 # ---------------------------------------------------------------------------
 # Public API: generate a podcast MP3 from a script
@@ -125,10 +134,8 @@ def synthesize_podcast_audio(user_id: int, doc_id: int, script: str) -> Tuple[st
         futures = []
         for i, (speaker, text) in enumerate(segments):
             preset = settings.tts_voice_female if speaker == "female" else settings.tts_voice_male
-            # Alternate between GPU 0 and GPU 1
             device_str = f"cuda:{i % 2}"
             futures.append(executor.submit(_synthesize_line, preset, text, device_str))
-        # Collect in original order
         for fut in futures:
             audio_chunks.append(fut.result())
 
