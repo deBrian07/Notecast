@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import axios from 'axios';
-import { PlayCircle, Play, Pause, Volume2, Download, Share, MoreHorizontal, FileText, MessageSquare, Clock, Plus, FolderPlus, Folder, ArrowLeft } from 'lucide-react';
+import { PlayCircle, Play, Pause, Volume2, Download, Share, MoreHorizontal, FileText, MessageSquare, Clock, Plus, FolderPlus, Folder, ArrowLeft, Trash2 } from 'lucide-react';
 import './Workspace.css';
 
 export default function Workspace(){
@@ -19,6 +19,10 @@ export default function Workspace(){
   const [currentProject, setCurrentProject] = useState(null);
   const [projects, setProjects] = useState([]);
   const [showProjectSelection, setShowProjectSelection] = useState(true);
+  
+  // Dropdown menu state
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const api = axios.create({
     baseURL: 'https://api.infinia.chat',
@@ -39,35 +43,35 @@ export default function Workspace(){
 
   const fetchProjects = async () => {
     try {
-      // For now, we'll simulate projects using existing podcasts
-      // In a real implementation, you'd have a separate projects endpoint
+      // Get projects from localStorage (proper project management)
+      const storedProjects = localStorage.getItem('notecast_projects');
+      let projects = storedProjects ? JSON.parse(storedProjects) : [];
+      
+      // For each project, check if it has associated podcasts
       const response = await api.get('/generate');
       const podcasts = response.data;
       
-      // Group podcasts by document or create mock projects
-      const projectsMap = new Map();
-      
-      podcasts.forEach(podcast => {
-        const projectKey = podcast.document_id || `project_${podcast.id}`;
-        if (!projectsMap.has(projectKey)) {
-          projectsMap.set(projectKey, {
-            id: projectKey,
-            name: podcast.title || `Project ${projectKey}`,
-            created_at: podcast.created_at,
-            document_count: 0,
-            has_podcast: !!podcast.audio_filename
-          });
-        }
-        if (podcast.audio_filename) {
-          projectsMap.get(projectKey).has_podcast = true;
-        }
+      projects = projects.map(project => {
+        const projectPodcasts = podcasts.filter(p => 
+          p.document_id === project.id || 
+          (project.id.startsWith('new_') && p.title && p.title.includes(project.name))
+        );
+        
+        return {
+          ...project,
+          has_podcast: projectPodcasts.some(p => p.audio_filename)
+        };
       });
-
-      setProjects(Array.from(projectsMap.values()));
+      
+      setProjects(projects);
     } catch (error) {
       console.error('Error fetching projects:', error);
       setProjects([]);
     }
+  };
+
+  const saveProjectsToStorage = (projects) => {
+    localStorage.setItem('notecast_projects', JSON.stringify(projects));
   };
 
   const fetchProjectDocuments = async (projectId) => {
@@ -90,6 +94,12 @@ export default function Workspace(){
       document_count: 0,
       has_podcast: false
     };
+    
+    // Save to localStorage
+    const currentProjects = projects;
+    const updatedProjects = [...currentProjects, newProject];
+    saveProjectsToStorage(updatedProjects);
+    setProjects(updatedProjects);
     
     setCurrentProject(newProject);
     setDocs([]);
@@ -114,6 +124,94 @@ export default function Workspace(){
     setAudio('');
     fetchProjects(); // Refresh projects list
   };
+
+  const deleteProject = async () => {
+    if (!currentProject || isDeleting) return;
+    
+    const confirmDelete = window.confirm(
+      `Are you sure you want to delete "${currentProject.name}"? This will permanently delete all documents and podcasts in this project.`
+    );
+    
+    if (!confirmDelete) return;
+    
+    setIsDeleting(true);
+    setShowDropdown(false);
+    
+    try {
+      // First, get all podcasts associated with this project to delete their audio files
+      const podcasts = await api.get('/generate');
+      const projectPodcasts = podcasts.data.filter(p => 
+        p.document_id === currentProject.id || 
+        (currentProject.id.startsWith('new_') && p.title && p.title.includes(currentProject.name))
+      );
+      
+      // Delete audio files first (before deleting database entries)
+      for (const podcast of projectPodcasts) {
+        if (podcast.audio_filename) {
+          try {
+            // Delete the entire podcast (this will delete both the audio file and database entry)
+            await api.delete(`/generate/${podcast.id}`);
+            console.log(`Deleted podcast and audio file for podcast ${podcast.id}`);
+          } catch (error) {
+            console.error(`Error deleting podcast ${podcast.id}:`, error);
+            // Continue with deletion even if podcast deletion fails
+          }
+        }
+      }
+      
+      // Delete all documents in the project
+      for (const doc of docs) {
+        try {
+          // Delete the actual document file from server storage (data/uploads)
+          await api.delete(`/documents/${doc.id}/file`);
+          console.log(`Deleted document file for ${doc.id}`);
+        } catch (error) {
+          console.error(`Error deleting document file for ${doc.id}:`, error);
+          // Continue with deletion even if file deletion fails
+        }
+        
+        try {
+          // Delete the document database entry
+          await api.delete(`/documents/${doc.id}`);
+          console.log(`Deleted document database entry ${doc.id}`);
+        } catch (error) {
+          console.error(`Error deleting document database entry ${doc.id}:`, error);
+        }
+      }
+      
+      // Remove project from localStorage
+      const updatedProjects = projects.filter(p => p.id !== currentProject.id);
+      saveProjectsToStorage(updatedProjects);
+      setProjects(updatedProjects);
+      
+      // Navigate back to project selection
+      setCurrentProject(null);
+      setShowProjectSelection(true);
+      setSelected(null);
+      setSelectedDoc(null);
+      setAudio('');
+      
+      console.log(`Successfully deleted project "${currentProject.name}" and all associated files`);
+      
+    } catch (error) {
+      console.error('Error deleting project:', error);
+      alert('There was an error deleting the project. Please try again.');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (showDropdown && !event.target.closest('.workspace-dropdown')) {
+        setShowDropdown(false);
+      }
+    };
+    
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showDropdown]);
 
   const handleDocSelect = (doc) => {
     setSelectedDoc(doc);
@@ -676,9 +774,27 @@ export default function Workspace(){
                 <Share />
                 Share
               </button>
-              <button className="workspace-button">
-                <MoreHorizontal />
-              </button>
+              <div className="workspace-dropdown">
+                <button 
+                  className="workspace-button"
+                  onClick={() => setShowDropdown(!showDropdown)}
+                  disabled={isDeleting}
+                >
+                  <MoreHorizontal />
+                </button>
+                {showDropdown && (
+                  <div className="workspace-dropdown-menu">
+                    <button 
+                      className="workspace-dropdown-item workspace-dropdown-item--danger"
+                      onClick={deleteProject}
+                      disabled={isDeleting}
+                    >
+                      <Trash2 />
+                      {isDeleting ? 'Deleting...' : 'Delete Project'}
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
