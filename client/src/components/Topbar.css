@@ -1,0 +1,97 @@
+.topbar {
+  height: 64px;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+  border-bottom: 2px solid #dbeafe;
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.08);
+  backdrop-filter: blur(10px);
+}
+
+.topbar-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.topbar-logo {
+  width: 36px;
+  height: 36px;
+  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+  transition: transform 0.2s ease;
+}
+
+.topbar-logo:hover {
+  transform: scale(1.05);
+}
+
+.topbar-logo span {
+  color: white;
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.topbar-title {
+  font-size: 24px;
+  font-weight: 800;
+  color: #1f2937;
+  letter-spacing: -0.025em;
+}
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.topbar-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 16px;
+  border-radius: 10px;
+  font-weight: 500;
+  font-size: 14px;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  border: none;
+  outline: none;
+}
+
+.topbar-button--ghost {
+  background: transparent;
+  color: #3b82f6;
+  border: 2px solid transparent;
+}
+
+.topbar-button--ghost:hover {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  transform: translateY(-1px);
+}
+
+.topbar-button--outline {
+  background: white;
+  color: #1d4ed8;
+  border: 2px solid #bfdbfe;
+}
+
+.topbar-button--outline:hover {
+  background: #eff6ff;
+  border-color: #93c5fd;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
+}
+
+.topbar-button svg {
+  width: 16px;
+  height: 16px;
+  margin-right: 6px;
+} 

@@ -1,22 +1,23 @@
 import { useState } from 'react';
 import axios from 'axios';
-import { Card, CardContent } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { LogIn, UserPlus } from 'lucide-react';
+import { LogIn, UserPlus, Eye, EyeOff } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import './Login.css';
 
 export default function Login() {
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isRegister, setIsRegister] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const nav = useNavigate();
 
   // axios instance
   const api = axios.create({ baseURL: 'https://api.infinia.chat' });
 
   async function handleLogin() {
+    setIsLoading(true);
     try {
       const params = new URLSearchParams();
       params.append('username', username);
@@ -30,10 +31,13 @@ export default function Login() {
       window.location = '/app'; 
     } catch (err) {
       alert('Login failed: ' + (err.response?.data?.detail || err.message));
+    } finally {
+      setIsLoading(false);
     }
   }
 
   async function handleRegister() {
+    setIsLoading(true);
     try {
       await api.post(
         '/auth/register',
@@ -44,54 +48,131 @@ export default function Login() {
       setIsRegister(false);
     } catch (err) {
       alert('Registration failed: ' + (err.response?.data?.detail || err.message));
+    } finally {
+      setIsLoading(false);
     }
   }
 
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (isRegister) {
+      handleRegister();
+    } else {
+      handleLogin();
+    }
+  };
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
-      <Card className="w-full max-w-sm shadow-xl">
-        <CardContent className="p-6 flex flex-col gap-4">
-          <h1 className="text-2xl font-bold text-center">
-            {isRegister ? 'Register' : 'Login'} to Notecast
-          </h1>
-          <Input
-            placeholder="Username"
-            value={username}
-            onChange={e => setUsername(e.target.value)}
-          />
-          {isRegister && (
-            <Input
-              placeholder="Email"
-              type="email"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-            />
-          )}
-          <Input
-            placeholder="Password"
-            type="password"
-            value={password}
-            onChange={e => setPassword(e.target.value)}
-          />
-          {isRegister ? (
-            <Button onClick={handleRegister} className="flex items-center">
-              <UserPlus className="mr-2 h-4 w-4" /> Register
-            </Button>
-          ) : (
-            <Button onClick={handleLogin} className="flex items-center">
-              <LogIn className="mr-2 h-4 w-4" /> Login
-            </Button>
-          )}
-          <Button
-            variant="link"
-            size="sm"
-            className="mt-2"
-            onClick={() => setIsRegister(!isRegister)}
-          >
-            {isRegister ? 'Have an account? Login' : 'No account? Register'}
-          </Button>
-        </CardContent>
-      </Card>
+    <div className="login-container">
+      {/* Background */}
+      <div className="login-background"></div>
+      
+      {/* Header */}
+      <div className="login-header">
+        <div className="login-logo">
+          <div className="login-logo-icon">N</div>
+          <span className="login-logo-text">Notecast</span>
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="login-content">
+        <div className="login-card">
+          <div className="login-card-header">
+            <h1 className="login-title">
+              {isRegister ? 'Create your account' : 'Welcome back'}
+            </h1>
+            <p className="login-subtitle">
+              {isRegister 
+                ? 'Join Notecast to start creating amazing podcasts from your documents'
+                : 'Sign in to your account to continue creating podcasts'
+              }
+            </p>
+          </div>
+
+          <form onSubmit={handleSubmit} className="login-form">
+            <div className="login-form-group">
+              <label className="login-label">Username</label>
+              <input
+                type="text"
+                className="login-input"
+                placeholder="Enter your username"
+                value={username}
+                onChange={e => setUsername(e.target.value)}
+                required
+              />
+            </div>
+
+            {isRegister && (
+              <div className="login-form-group">
+                <label className="login-label">Email</label>
+                <input
+                  type="email"
+                  className="login-input"
+                  placeholder="Enter your email"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  required
+                />
+              </div>
+            )}
+
+            <div className="login-form-group">
+              <label className="login-label">Password</label>
+              <div className="login-password-wrapper">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  className="login-input login-password-input"
+                  placeholder="Enter your password"
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  required
+                />
+                <button
+                  type="button"
+                  className="login-password-toggle"
+                  onClick={() => setShowPassword(!showPassword)}
+                >
+                  {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                </button>
+              </div>
+            </div>
+
+            <button 
+              type="submit" 
+              className="login-submit-button"
+              disabled={isLoading}
+            >
+              {isLoading ? (
+                <div className="login-loading">
+                  <div className="login-spinner"></div>
+                  {isRegister ? 'Creating account...' : 'Signing in...'}
+                </div>
+              ) : (
+                <>
+                  {isRegister ? <UserPlus size={20} /> : <LogIn size={20} />}
+                  {isRegister ? 'Create Account' : 'Sign In'}
+                </>
+              )}
+            </button>
+
+            <div className="login-divider">
+              <span>or</span>
+            </div>
+
+            <button
+              type="button"
+              className="login-toggle-button"
+              onClick={() => setIsRegister(!isRegister)}
+            >
+              {isRegister 
+                ? 'Already have an account? Sign in'
+                : "Don't have an account? Create one"
+              }
+            </button>
+          </form>
+        </div>
+      </div>
     </div>
   );
 }

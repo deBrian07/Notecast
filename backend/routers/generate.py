@@ -29,6 +29,81 @@ def start_podcast_generation(
     background_tasks.add_task(_process_generation, current_user.id, doc)
     return {"detail": "Podcast generation started"}
 
+@router.delete("/{podcast_id}")
+def delete_podcast(
+    podcast_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Delete a podcast and its audio file"""
+    print(f"[DEBUG] Deleting podcast {podcast_id} for user {current_user.id}")
+    
+    pod = get_podcast_by_id(podcast_id)
+    if not pod:
+        raise HTTPException(status_code=404, detail="Podcast not found")
+
+    # Handle both SQLAlchemy model objects and Row objects
+    user_id = pod.user_id if hasattr(pod, 'user_id') else pod['user_id']
+    audio_filename = pod.audio_filename if hasattr(pod, 'audio_filename') else pod['audio_filename']
+
+    if user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Podcast not found")
+    
+    # Delete the audio file from disk
+    if audio_filename and os.path.exists(audio_filename):
+        try:
+            os.remove(audio_filename)
+            print(f"[DEBUG] Deleted audio file: {audio_filename}")
+        except Exception as e:
+            print(f"[DEBUG] Error deleting audio file {audio_filename}: {e}")
+    
+    # Delete the podcast record from database
+    try:
+        db.execute(
+            text("DELETE FROM podcasts WHERE id = :podcast_id"),
+            {"podcast_id": podcast_id}
+        )
+        db.commit()
+        print(f"[DEBUG] Deleted podcast database record: {podcast_id}")
+    except Exception as e:
+        db.rollback()
+        print(f"[DEBUG] Error deleting podcast from database: {e}")
+        raise HTTPException(status_code=500, detail="Error deleting podcast")
+    
+    return {"detail": "Podcast deleted successfully"}
+
+@router.delete("/{podcast_id}/audio")
+def delete_podcast_audio(
+    podcast_id: int,
+    current_user: User = Depends(get_current_user)
+):
+    """Delete only the audio file of a podcast"""
+    print(f"[DEBUG] Deleting audio file for podcast {podcast_id} for user {current_user.id}")
+    
+    pod = get_podcast_by_id(podcast_id)
+    if not pod:
+        raise HTTPException(status_code=404, detail="Podcast not found")
+
+    # Handle both SQLAlchemy model objects and Row objects
+    user_id = pod.user_id if hasattr(pod, 'user_id') else pod['user_id']
+    audio_filename = pod.audio_filename if hasattr(pod, 'audio_filename') else pod['audio_filename']
+
+    if user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Podcast not found")
+    
+    # Delete the audio file from disk
+    if audio_filename and os.path.exists(audio_filename):
+        try:
+            os.remove(audio_filename)
+            print(f"[DEBUG] Deleted audio file: {audio_filename}")
+        except Exception as e:
+            print(f"[DEBUG] Error deleting audio file {audio_filename}: {e}")
+            raise HTTPException(status_code=500, detail="Error deleting audio file")
+    else:
+        print(f"[DEBUG] Audio file not found or already deleted: {audio_filename}")
+    
+    return {"detail": "Audio file deleted successfully"}
+
 @router.get("/")
 def list_podcasts(db: Session = Depends(get_db),
                   current_user: User = Depends(get_current_user)):
