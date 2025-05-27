@@ -1,11 +1,18 @@
-import asyncio
 from models.database import Base, engine
+# Import all models to ensure they are registered with Base.metadata
+from models.user import User
+from models.document import Document
+from models.podcast import Podcast
+# Add any other models here...
 
-async def init_db():
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    await engine.dispose()
-    print("✅ Database schema created and engine disposed.")
+def init_db():
+    # Create database directory if it doesn't exist
+    import os
+    os.makedirs("data", exist_ok=True)
+    
+    # Create all tables
+    Base.metadata.create_all(bind=engine)
+    print("✅ Database schema created.")
 
 if __name__ == "__main__":
-    asyncio.run(init_db())
+    init_db()

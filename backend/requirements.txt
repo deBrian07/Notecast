@@ -9,4 +9,7 @@ requests
 PyPDF2
 python-docx
 pydub
-tortoise-tts
+nemo-toolkit[tts]
+torch
+torchaudio
+soundfile

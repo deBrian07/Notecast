@@ -35,8 +35,41 @@ export default function Workspace(){
     while (!pod) {
       await new Promise(r => setTimeout(r, 3000));
       const list = (await api.get('/generate')).data;
-      pod = list.find(p => p.document_id === selected.id && p.audio_filename);
+      
+      // Debug: log the podcast list
+      console.log('Polling for podcasts, found:', list.length);
+      console.log('Looking for document_id:', selected.id);
+      console.log('Available podcasts:', list.map(p => ({ id: p.id, document_id: p.document_id, audio_filename: p.audio_filename })));
+      
+      // Find podcasts with matching document_id and audio_filename, prioritize most recent
+      const matchingPods = list
+        .filter(p => p.document_id === selected.id && p.audio_filename)
+        .sort((a, b) => b.id - a.id); // Sort by ID descending (most recent first)
+      
+      if (matchingPods.length > 0) {
+        pod = matchingPods[0]; // Use the most recent matching podcast
+        console.log('Found exact match (most recent):', pod);
+      } else {
+        // Fallback: try to find by title match (for cases where document_id is None)
+        const recentPods = list
+          .filter(p => p.audio_filename) // Has audio
+          .sort((a, b) => b.id - a.id); // Sort by ID descending (most recent first)
+        
+        if (recentPods.length > 0) {
+          console.log('No exact match found, checking if most recent podcast might be ours...');
+          console.log('Most recent podcast:', recentPods[0]);
+          
+          // If we just started generation and there's a very recent podcast, it might be ours
+          const mostRecent = recentPods[0];
+          if (mostRecent && mostRecent.title && mostRecent.title.includes(selected.orig_filename)) {
+            console.log('Found podcast by title match:', mostRecent);
+            pod = mostRecent;
+          }
+        }
+      }
     }
+
+    console.log('Found matching podcast:', pod);
 
     // Fetch final audio blob
     const res = await api.get(`/generate/${pod.id}/audio`, { responseType: 'blob' });
