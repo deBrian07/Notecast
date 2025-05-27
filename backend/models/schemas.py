@@ -28,6 +28,8 @@ class DocumentBase(BaseModel):
 class PodcastBase(BaseModel):
     id: int
     title: str
+    document_id: Optional[int] = None
+    audio_filename: Optional[str] = None
     created_at: datetime
     duration: Optional[float] = None
 

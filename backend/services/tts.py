@@ -21,7 +21,7 @@ from core.config import settings
 _tts_global: Dict[str, Tuple[FastPitchModel, HifiGanModel]] = {}
 
 # Standard sample rate for NeMo TTS models
-NEMO_SAMPLE_RATE = 22050
+NEMO_SAMPLE_RATE = 44100
 
 def _get_tts(device_str: str = "cuda:0") -> Tuple[FastPitchModel, HifiGanModel]:
     """
@@ -34,8 +34,8 @@ def _get_tts(device_str: str = "cuda:0") -> Tuple[FastPitchModel, HifiGanModel]:
         dev = torch.device(device_str)
 
         # 2) load & pin both models to that device, in eval mode
-        fastpitch = FastPitchModel.from_pretrained("tts_en_fastpitch").to(dev).eval()
-        hifigan   = HifiGanModel.from_pretrained("tts_en_hifigan").to(dev).eval()
+        fastpitch = FastPitchModel.from_pretrained("tts_en_fastpitch_multispeaker").to(dev).eval()
+        hifigan   = HifiGanModel.from_pretrained("tts_en_hifitts_hifigan_ft_fastpitch").to(dev).eval()
         
         _tts_global[device_str] = (fastpitch, hifigan)
     return _tts_global[device_str]
@@ -60,8 +60,17 @@ def _synthesize_line(voice_preset: str, text: str, device_str: str) -> AudioSegm
     with torch.no_grad():
         # tokenize/normalize your text
         tokens = fastpitch.parse(text)
-        # generate a mel-spectrogram batch of shape [B, n_mels, T]
-        mel_spec = fastpitch.generate_spectrogram(tokens=tokens, speaker=0)
+        
+        # Map your preset names to speaker IDs explicitly
+        # (female_dainty → 0, male_deep → 1)
+        name = voice_preset.lower()
+        if name.startswith("male"):
+            speaker_id = 16
+        elif name.startswith("female"):
+            speaker_id = 14
+        
+        # generate a mel-spectrogram batch
+        mel_spec = fastpitch.generate_spectrogram(tokens=tokens, speaker=speaker_id)
         
         # Convert mel spectrogram to audio using HiFiGAN
         wav = hifigan.convert_spectrogram_to_audio(spec=mel_spec)
@@ -106,6 +115,8 @@ def _synthesize_line(voice_preset: str, text: str, device_str: str) -> AudioSegm
 
 def synthesize_podcast_audio(user_id: int, doc_id: int, script: str) -> Tuple[str, float]:
     print(f"[TTS] Full script (~{len(script)} chars) to synthesize...")
+    # Debug log the voice settings
+    print(f"[TTS] Voice presets configured - Female: '{settings.tts_voice_female}', Male: '{settings.tts_voice_male}'")
     """
     Generate an MP3 podcast and return (file_path, duration_sec).
     This will dispatch up to 2 concurrent synthesis jobs across GPU 0 and GPU 1.
