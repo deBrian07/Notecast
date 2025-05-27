@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import axios from 'axios';
-import { PlayCircle, Play, Pause, Volume2, Download, Share, MoreHorizontal, FileText, MessageSquare, Clock } from 'lucide-react';
+import { PlayCircle, Play, Pause, Volume2, Download, Share, MoreHorizontal, FileText, MessageSquare, Clock, Plus } from 'lucide-react';
 import './Workspace.css';
 
 export default function Workspace(){
@@ -12,11 +12,35 @@ export default function Workspace(){
   const [duration, setDuration] = useState(0);
   const [audioRef, setAudioRef] = useState(null);
   const [activeTab, setActiveTab] = useState('studio');
+  const [docs, setDocs] = useState([]);
+  const [selectedDoc, setSelectedDoc] = useState(null);
 
   const api = axios.create({
     baseURL: 'https://api.infinia.chat',
     headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
   });
+
+  // Fetch documents for Sources tab
+  useEffect(() => { 
+    api.get('/documents').then(r => setDocs(r.data)); 
+  }, []);
+
+  const handleDocSelect = (doc) => {
+    setSelectedDoc(doc);
+    setSelected(doc);
+    window.dispatchEvent(new CustomEvent('select-doc', { detail: doc }));
+  };
+
+  const handleFileUpload = async (e) => {
+    const file = e.target.files[0]; 
+    if (!file) return;
+    
+    const form = new FormData(); 
+    form.append('file', file);
+    await api.post('/documents/upload', form);
+    const updatedDocs = (await api.get('/documents')).data;
+    setDocs(updatedDocs);
+  };
 
   // Listen for "select-doc" custom event dispatched by Sidebar
   useEffect(() => {
@@ -179,6 +203,273 @@ export default function Workspace(){
     setLoading(false);
   }
 
+  const renderTabContent = () => {
+    switch (activeTab) {
+      case 'sources':
+        return (
+          <div className="sources-tab-content">
+            <div className="sources-header">
+              <h2 className="sources-title">Sources</h2>
+              <p className="sources-subtitle">Documents for your notebook</p>
+            </div>
+
+            <div className="sources-upload">
+              <button 
+                onClick={() => document.getElementById('fileInput').click()}
+                className="sources-upload-button"
+              >
+                <Plus />
+                Upload PDF
+              </button>
+              <input 
+                type="file" 
+                id="fileInput" 
+                accept=".pdf,.docx" 
+                hidden 
+                onChange={handleFileUpload}
+              />
+            </div>
+
+            <div className="sources-content">
+              {docs.length === 0 ? (
+                <div className="sources-empty">
+                  <div className="sources-empty-icon">
+                    <FileText />
+                  </div>
+                  <h3 className="sources-empty-title">No documents yet</h3>
+                  <p className="sources-empty-text">Upload a PDF or document to get started</p>
+                </div>
+              ) : (
+                <div className="sources-documents">
+                  {docs.map(doc => (
+                    <div
+                      key={doc.id}
+                      onClick={() => handleDocSelect(doc)}
+                      className={`sources-document-card ${selectedDoc?.id === doc.id ? 'sources-document-card--selected' : ''}`}
+                    >
+                      <div className="sources-document-content">
+                        <div className={`sources-document-icon ${selectedDoc?.id === doc.id ? 'sources-document-icon--selected' : ''}`}>
+                          <FileText />
+                        </div>
+                        <div className="sources-document-info">
+                          <p className={`sources-document-title ${selectedDoc?.id === doc.id ? 'sources-document-title--selected' : ''}`}>
+                            {doc.orig_filename}
+                          </p>
+                          <p className="sources-document-meta">
+                            PDF • {new Date(doc.created_at).toLocaleDateString()}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="sources-footer">
+              <div className="sources-footer-text">
+                {docs.length} {docs.length === 1 ? 'document' : 'documents'} uploaded
+              </div>
+            </div>
+          </div>
+        );
+
+      case 'chat':
+        return (
+          <div className="chat-tab-content">
+            <div className="chat-placeholder">
+              <div className="chat-empty-icon">
+                <MessageSquare />
+              </div>
+              <h3 className="chat-empty-title">Chat Coming Soon</h3>
+              <p className="chat-empty-text">Interactive chat with your documents will be available here</p>
+            </div>
+          </div>
+        );
+
+      case 'studio':
+      default:
+        return (
+          <div className="workspace-grid">
+            {/* LEFT – Audio Overview & Interactive Badge */}
+            <section className="workspace-main">
+              {/* Audio Overview Section */}
+              <div className="audio-overview-card">
+                <div className="audio-overview-header">
+                  <div className="audio-overview-header-content">
+                    <div>
+                      <h2 className="audio-overview-title">Audio Overview</h2>
+                      <p className="audio-overview-subtitle">
+                        {loading ? 'Generating your podcast...' : audio ? 'Your podcast is ready!' : 'Generate an audio overview of your document'}
+                      </p>
+                    </div>
+                    {!loading && !audio && (
+                      <button 
+                        onClick={generate}
+                        className="audio-overview-button"
+                      >
+                        Generate Podcast
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="audio-overview-content">
+                  {/* Loading State */}
+                  {loading && (
+                    <div className="audio-loading">
+                      <div className="audio-loading-spinner"></div>
+                      <div className="audio-loading-text">
+                        <p className="audio-loading-title">Loading conversation...</p>
+                        <p className="audio-loading-subtitle">This may take a few moments...</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Audio Player */}
+                  {audio && !loading && (
+                    <div className="audio-player">
+                      <div className="audio-player-header">
+                        <h3 className="audio-player-title">{selected.orig_filename}</h3>
+                        <div className="audio-player-meta">
+                          <span className="audio-player-duration">{formatTime(duration)} • English</span>
+                          <button className="workspace-button">
+                            <Download />
+                            Download
+                          </button>
+                          <button className="workspace-button">
+                            <Share />
+                            Share
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Custom Audio Player */}
+                      <div className="audio-player-controls">
+                        <div className="audio-controls">
+                          {/* Play/Pause Button */}
+                          <button
+                            onClick={togglePlayPause}
+                            className="audio-play-button"
+                          >
+                            {isPlaying ? <Pause /> : <Play />}
+                          </button>
+
+                          {/* Progress Bar */}
+                          <div className="audio-progress">
+                            <div 
+                              className="audio-progress-bar"
+                              onClick={handleSeek}
+                            >
+                              <div 
+                                className="audio-progress-fill"
+                                style={{ width: `${duration ? (currentTime / duration) * 100 : 0}%` }}
+                              ></div>
+                            </div>
+                            <div className="audio-progress-time">
+                              <span>{formatTime(currentTime)}</span>
+                              <span>{formatTime(duration)}</span>
+                            </div>
+                          </div>
+
+                          {/* Volume */}
+                          <div className="audio-volume">
+                            <Volume2 />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Hidden HTML5 Audio Element */}
+                      <audio
+                        ref={setAudioRef}
+                        src={audio}
+                        style={{ display: 'none' }}
+                        onPlay={() => setIsPlaying(true)}
+                        onPause={() => setIsPlaying(false)}
+                      />
+                    </div>
+                  )}
+
+                  {/* Empty State */}
+                  {!audio && !loading && (
+                    <div className="audio-empty">
+                      <div className="audio-empty-icon">
+                        <PlayCircle />
+                      </div>
+                      <p className="audio-empty-text">Click to load the conversation.</p>
+                      <button 
+                        onClick={loadExistingPodcast}
+                        className="audio-empty-button"
+                      >
+                        Load
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Interactive Mode Badge */}
+              <div className="interactive-badge">
+                <div className="interactive-badge-content">
+                  Interactive mode
+                  <span className="interactive-badge-beta">BETA</span>
+                </div>
+              </div>
+            </section>
+
+            {/* RIGHT – Notes + Quick Actions */}
+            <aside className="workspace-sidebar">
+              {/* Notes Section */}
+              <div className="notes-card">
+                <div className="notes-header">
+                  <h2 className="notes-title">Notes</h2>
+                  <button className="workspace-button">
+                    <MoreHorizontal />
+                  </button>
+                </div>
+                <div className="notes-content">
+                  <div className="notes-empty-icon">
+                    <FileText />
+                  </div>
+                  <p className="notes-empty-text">No notes yet</p>
+                  <button className="notes-add-button">
+                    + Add note
+                  </button>
+                </div>
+              </div>
+
+              {/* Quick Actions */}
+              <div className="quick-actions">
+                <div className="quick-action-card">
+                  <div className="quick-action-icon">
+                    <FileText />
+                  </div>
+                  <h3 className="quick-action-title">Study guide</h3>
+                  <p className="quick-action-description">Generate study materials</p>
+                </div>
+
+                <div className="quick-action-card">
+                  <div className="quick-action-icon">
+                    <MessageSquare />
+                  </div>
+                  <h3 className="quick-action-title">FAQ</h3>
+                  <p className="quick-action-description">Common questions</p>
+                </div>
+
+                <div className="quick-action-card">
+                  <div className="quick-action-icon">
+                    <Clock />
+                  </div>
+                  <h3 className="quick-action-title">Timeline</h3>
+                  <p className="quick-action-description">Key events overview</p>
+                </div>
+              </div>
+            </aside>
+          </div>
+        );
+    }
+  };
+
   // No doc selected → friendly placeholder
   if (!selected) {
     return (
@@ -243,182 +534,7 @@ export default function Workspace(){
 
       {/* Main Content - Scrollable */}
       <div className="workspace-content">
-        <div className="workspace-grid">
-          {/* LEFT – Audio Overview & Interactive Badge */}
-          <section className="workspace-main">
-            {/* Audio Overview Section */}
-            <div className="audio-overview-card">
-              <div className="audio-overview-header">
-                <div className="audio-overview-header-content">
-                  <div>
-                    <h2 className="audio-overview-title">Audio Overview</h2>
-                    <p className="audio-overview-subtitle">
-                      {loading ? 'Generating your podcast...' : audio ? 'Your podcast is ready!' : 'Generate an audio overview of your document'}
-                    </p>
-                  </div>
-                  {!loading && !audio && (
-                    <button 
-                      onClick={generate}
-                      className="audio-overview-button"
-                    >
-                      Generate Podcast
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              <div className="audio-overview-content">
-                {/* Loading State */}
-                {loading && (
-                  <div className="audio-loading">
-                    <div className="audio-loading-spinner"></div>
-                    <div className="audio-loading-text">
-                      <p className="audio-loading-title">Loading conversation...</p>
-                      <p className="audio-loading-subtitle">This may take a few moments...</p>
-                    </div>
-                  </div>
-                )}
-
-                {/* Audio Player */}
-                {audio && !loading && (
-                  <div className="audio-player">
-                    <div className="audio-player-header">
-                      <h3 className="audio-player-title">{selected.orig_filename}</h3>
-                      <div className="audio-player-meta">
-                        <span className="audio-player-duration">{formatTime(duration)} • English</span>
-                        <button className="workspace-button">
-                          <Download />
-                          Download
-                        </button>
-                        <button className="workspace-button">
-                          <Share />
-                          Share
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Custom Audio Player */}
-                    <div className="audio-player-controls">
-                      <div className="audio-controls">
-                        {/* Play/Pause Button */}
-                        <button
-                          onClick={togglePlayPause}
-                          className="audio-play-button"
-                        >
-                          {isPlaying ? <Pause /> : <Play />}
-                        </button>
-
-                        {/* Progress Bar */}
-                        <div className="audio-progress">
-                          <div 
-                            className="audio-progress-bar"
-                            onClick={handleSeek}
-                          >
-                            <div 
-                              className="audio-progress-fill"
-                              style={{ width: `${duration ? (currentTime / duration) * 100 : 0}%` }}
-                            ></div>
-                          </div>
-                          <div className="audio-progress-time">
-                            <span>{formatTime(currentTime)}</span>
-                            <span>{formatTime(duration)}</span>
-                          </div>
-                        </div>
-
-                        {/* Volume */}
-                        <div className="audio-volume">
-                          <Volume2 />
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Hidden HTML5 Audio Element */}
-                    <audio
-                      ref={setAudioRef}
-                      src={audio}
-                      style={{ display: 'none' }}
-                      onPlay={() => setIsPlaying(true)}
-                      onPause={() => setIsPlaying(false)}
-                    />
-                  </div>
-                )}
-
-                {/* Empty State */}
-                {!audio && !loading && (
-                  <div className="audio-empty">
-                    <div className="audio-empty-icon">
-                      <PlayCircle />
-                    </div>
-                    <p className="audio-empty-text">Click to load the conversation.</p>
-                    <button 
-                      onClick={loadExistingPodcast}
-                      className="audio-empty-button"
-                    >
-                      Load
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Interactive Mode Badge */}
-            <div className="interactive-badge">
-              <div className="interactive-badge-content">
-                Interactive mode
-                <span className="interactive-badge-beta">BETA</span>
-              </div>
-            </div>
-          </section>
-
-          {/* RIGHT – Notes + Quick Actions */}
-          <aside className="workspace-sidebar">
-            {/* Notes Section */}
-            <div className="notes-card">
-              <div className="notes-header">
-                <h2 className="notes-title">Notes</h2>
-                <button className="workspace-button">
-                  <MoreHorizontal />
-                </button>
-              </div>
-              <div className="notes-content">
-                <div className="notes-empty-icon">
-                  <FileText />
-                </div>
-                <p className="notes-empty-text">No notes yet</p>
-                <button className="notes-add-button">
-                  + Add note
-                </button>
-              </div>
-            </div>
-
-            {/* Quick Actions */}
-            <div className="quick-actions">
-              <div className="quick-action-card">
-                <div className="quick-action-icon">
-                  <FileText />
-                </div>
-                <h3 className="quick-action-title">Study guide</h3>
-                <p className="quick-action-description">Generate study materials</p>
-              </div>
-
-              <div className="quick-action-card">
-                <div className="quick-action-icon">
-                  <MessageSquare />
-                </div>
-                <h3 className="quick-action-title">FAQ</h3>
-                <p className="quick-action-description">Common questions</p>
-              </div>
-
-              <div className="quick-action-card">
-                <div className="quick-action-icon">
-                  <Clock />
-                </div>
-                <h3 className="quick-action-title">Timeline</h3>
-                <p className="quick-action-description">Key events overview</p>
-              </div>
-            </div>
-          </aside>
-        </div>
+        {renderTabContent()}
       </div>
     </main>
   );

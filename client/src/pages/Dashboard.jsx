@@ -8,7 +8,9 @@ export default function Dashboard(){
       <Topbar />
       <div className="flex flex-1 overflow-hidden">
         <Sidebar />
-        <Workspace />
+        <div className="flex-1 min-w-0">
+          <Workspace />
+        </div>
       </div>
     </div>
   );
