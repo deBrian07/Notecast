@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import axios from 'axios';
-import { PlayCircle, Play, Pause, Volume2, Download, Share, MoreHorizontal, FileText, MessageSquare, Clock, Plus } from 'lucide-react';
+import { PlayCircle, Play, Pause, Volume2, Download, Share, MoreHorizontal, FileText, MessageSquare, Clock, Plus, FolderPlus, Folder, ArrowLeft } from 'lucide-react';
 import './Workspace.css';
 
 export default function Workspace(){
@@ -11,19 +11,109 @@ export default function Workspace(){
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [audioRef, setAudioRef] = useState(null);
-  const [activeTab, setActiveTab] = useState('studio');
+  const [activeTab, setActiveTab] = useState('sources');
   const [docs, setDocs] = useState([]);
   const [selectedDoc, setSelectedDoc] = useState(null);
+  
+  // New project-based state
+  const [currentProject, setCurrentProject] = useState(null);
+  const [projects, setProjects] = useState([]);
+  const [showProjectSelection, setShowProjectSelection] = useState(true);
 
   const api = axios.create({
     baseURL: 'https://api.infinia.chat',
     headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
   });
 
-  // Fetch documents for Sources tab
-  useEffect(() => { 
-    api.get('/documents').then(r => setDocs(r.data)); 
+  // Fetch projects on component mount
+  useEffect(() => {
+    fetchProjects();
   }, []);
+
+  // Fetch documents when project changes
+  useEffect(() => {
+    if (currentProject) {
+      fetchProjectDocuments(currentProject.id);
+    }
+  }, [currentProject]);
+
+  const fetchProjects = async () => {
+    try {
+      // For now, we'll simulate projects using existing podcasts
+      // In a real implementation, you'd have a separate projects endpoint
+      const response = await api.get('/generate');
+      const podcasts = response.data;
+      
+      // Group podcasts by document or create mock projects
+      const projectsMap = new Map();
+      
+      podcasts.forEach(podcast => {
+        const projectKey = podcast.document_id || `project_${podcast.id}`;
+        if (!projectsMap.has(projectKey)) {
+          projectsMap.set(projectKey, {
+            id: projectKey,
+            name: podcast.title || `Project ${projectKey}`,
+            created_at: podcast.created_at,
+            document_count: 0,
+            has_podcast: !!podcast.audio_filename
+          });
+        }
+        if (podcast.audio_filename) {
+          projectsMap.get(projectKey).has_podcast = true;
+        }
+      });
+
+      setProjects(Array.from(projectsMap.values()));
+    } catch (error) {
+      console.error('Error fetching projects:', error);
+      setProjects([]);
+    }
+  };
+
+  const fetchProjectDocuments = async (projectId) => {
+    try {
+      const response = await api.get('/documents');
+      // Filter documents by project (for now, we'll use all documents)
+      // In a real implementation, documents would be associated with projects
+      setDocs(response.data);
+    } catch (error) {
+      console.error('Error fetching project documents:', error);
+      setDocs([]);
+    }
+  };
+
+  const createNewProject = () => {
+    const newProject = {
+      id: `new_${Date.now()}`,
+      name: `New Project ${new Date().toLocaleDateString()}`,
+      created_at: new Date().toISOString(),
+      document_count: 0,
+      has_podcast: false
+    };
+    
+    setCurrentProject(newProject);
+    setDocs([]);
+    setSelected(null);
+    setSelectedDoc(null);
+    setAudio('');
+    setShowProjectSelection(false);
+    setActiveTab('sources');
+  };
+
+  const selectProject = (project) => {
+    setCurrentProject(project);
+    setShowProjectSelection(false);
+    setActiveTab('sources');
+  };
+
+  const backToProjects = () => {
+    setCurrentProject(null);
+    setShowProjectSelection(true);
+    setSelected(null);
+    setSelectedDoc(null);
+    setAudio('');
+    fetchProjects(); // Refresh projects list
+  };
 
   const handleDocSelect = (doc) => {
     setSelectedDoc(doc);
@@ -330,7 +420,7 @@ export default function Workspace(){
                   {audio && !loading && (
                     <div className="audio-player">
                       <div className="audio-player-header">
-                        <h3 className="audio-player-title">{selected.orig_filename}</h3>
+                        <h3 className="audio-player-title">{selected?.orig_filename || currentProject?.name}</h3>
                         <div className="audio-player-meta">
                           <span className="audio-player-duration">{formatTime(duration)} • English</span>
                           <button className="workspace-button">
@@ -396,13 +486,28 @@ export default function Workspace(){
                       <div className="audio-empty-icon">
                         <PlayCircle />
                       </div>
-                      <p className="audio-empty-text">Click to load the conversation.</p>
-                      <button 
-                        onClick={loadExistingPodcast}
-                        className="audio-empty-button"
-                      >
-                        Load
-                      </button>
+                      <p className="audio-empty-text">
+                        {docs.length === 0 
+                          ? "Add documents to your project first, then generate a podcast." 
+                          : "Click to load or generate a podcast for this project."
+                        }
+                      </p>
+                      {docs.length > 0 && (
+                        <div className="audio-empty-actions">
+                          <button 
+                            onClick={loadExistingPodcast}
+                            className="audio-empty-button"
+                          >
+                            Load Existing
+                          </button>
+                          <button 
+                            onClick={generate}
+                            className="audio-empty-button"
+                          >
+                            Generate New
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -470,30 +575,101 @@ export default function Workspace(){
     }
   };
 
-  // No doc selected → friendly placeholder
-  if (!selected) {
+  const renderProjectSelection = () => {
+    return (
+      <div className="project-selection">
+        <div className="project-selection-header">
+          <h1 className="project-selection-title">Welcome to Notecast</h1>
+          <p className="project-selection-subtitle">Create a new podcast project or continue with an existing one</p>
+        </div>
+
+        <div className="project-actions">
+          <button 
+            onClick={createNewProject}
+            className="project-action-card project-action-card--new"
+          >
+            <div className="project-action-icon">
+              <FolderPlus />
+            </div>
+            <h3 className="project-action-title">Create New Project</h3>
+            <p className="project-action-description">Start a fresh podcast project with new documents</p>
+          </button>
+        </div>
+
+        {projects.length > 0 && (
+          <div className="existing-projects">
+            <h2 className="existing-projects-title">Your Projects</h2>
+            <div className="projects-grid">
+              {projects.map(project => (
+                <div
+                  key={project.id}
+                  onClick={() => selectProject(project)}
+                  className="project-card"
+                >
+                  <div className="project-card-header">
+                    <div className="project-card-icon">
+                      <Folder />
+                    </div>
+                    <div className="project-card-status">
+                      {project.has_podcast && (
+                        <div className="project-status-badge">
+                          <PlayCircle size={16} />
+                          Podcast Ready
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="project-card-content">
+                    <h3 className="project-card-title">{project.name}</h3>
+                    <p className="project-card-meta">
+                      Created {new Date(project.created_at).toLocaleDateString()}
+                    </p>
+                    <p className="project-card-description">
+                      {project.document_count} documents • {project.has_podcast ? 'Has podcast' : 'No podcast yet'}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // Show project selection view
+  if (showProjectSelection) {
     return (
       <main className="workspace">
-        <div className="workspace-empty">
-          <div className="workspace-empty-icon">
-            <PlayCircle />
-          </div>
-          <h3 className="workspace-empty-title">Select a document to begin</h3>
-          <p className="workspace-empty-text">Choose a document from the sidebar to generate your podcast</p>
+        <div className="workspace-content">
+          {renderProjectSelection()}
         </div>
       </main>
     );
   }
 
+  // Show project workspace view
   return (
     <main className="workspace">
       {/* Header with Navigation Tabs */}
       <div className="workspace-header">
         <div className="workspace-header-content">
           <div className="workspace-header-top">
-            <div>
-              <h1 className="workspace-title">{selected.orig_filename}</h1>
-              <p className="workspace-subtitle">Ready for podcast generation</p>
+            <div className="workspace-header-left">
+              <button 
+                onClick={backToProjects}
+                className="workspace-back-button"
+              >
+                <ArrowLeft />
+                Back to Projects
+              </button>
+              <div>
+                <h1 className="workspace-title">{currentProject?.name}</h1>
+                <p className="workspace-subtitle">
+                  {docs.length} {docs.length === 1 ? 'document' : 'documents'} • 
+                  {currentProject?.has_podcast ? ' Podcast available' : ' No podcast yet'}
+                </p>
+              </div>
             </div>
             <div className="workspace-actions">
               <button className="workspace-button">

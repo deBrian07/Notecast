@@ -887,4 +887,256 @@
   font-size: 16px;
   color: #3b82f6;
   font-weight: 500;
+}
+
+/* Project Selection */
+.project-selection {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 48px 24px;
+}
+
+.project-selection-header {
+  text-align: center;
+  margin-bottom: 48px;
+}
+
+.project-selection-title {
+  font-size: 36px;
+  font-weight: 800;
+  color: #1f2937;
+  margin-bottom: 12px;
+}
+
+.project-selection-subtitle {
+  font-size: 18px;
+  color: #3b82f6;
+  font-weight: 500;
+}
+
+.project-actions {
+  margin-bottom: 48px;
+  display: flex;
+  justify-content: center;
+}
+
+.project-action-card {
+  background: white;
+  border-radius: 20px;
+  border: 2px solid #dbeafe;
+  padding: 32px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 16px rgba(59, 130, 246, 0.1);
+  max-width: 320px;
+  width: 100%;
+}
+
+.project-action-card--new {
+  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+  border-color: #3b82f6;
+}
+
+.project-action-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 32px rgba(59, 130, 246, 0.2);
+  border-color: #1d4ed8;
+}
+
+.project-action-card--new:hover {
+  background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+}
+
+.project-action-icon {
+  width: 80px;
+  height: 80px;
+  margin: 0 auto 24px;
+  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+  border-radius: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 24px rgba(59, 130, 246, 0.3);
+  transition: all 0.3s ease;
+}
+
+.project-action-card:hover .project-action-icon {
+  transform: scale(1.1);
+  box-shadow: 0 12px 32px rgba(59, 130, 246, 0.4);
+}
+
+.project-action-icon svg {
+  width: 40px;
+  height: 40px;
+  color: white;
+}
+
+.project-action-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: #1f2937;
+  margin-bottom: 8px;
+}
+
+.project-action-description {
+  font-size: 16px;
+  color: #3b82f6;
+  font-weight: 500;
+}
+
+.existing-projects {
+  margin-top: 48px;
+}
+
+.existing-projects-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: #1f2937;
+  margin-bottom: 24px;
+  text-align: center;
+}
+
+.projects-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 24px;
+}
+
+.project-card {
+  background: white;
+  border-radius: 16px;
+  border: 2px solid #e0e7ff;
+  padding: 24px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.08);
+}
+
+.project-card:hover {
+  border-color: #93c5fd;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(59, 130, 246, 0.15);
+}
+
+.project-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.project-card-icon {
+  width: 48px;
+  height: 48px;
+  background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+}
+
+.project-card:hover .project-card-icon {
+  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+  transform: scale(1.1);
+}
+
+.project-card-icon svg {
+  width: 24px;
+  height: 24px;
+  color: #3b82f6;
+  transition: color 0.3s ease;
+}
+
+.project-card:hover .project-card-icon svg {
+  color: white;
+}
+
+.project-card-status {
+  display: flex;
+  align-items: center;
+}
+
+.project-status-badge {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: white;
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.project-card-content {
+  flex: 1;
+}
+
+.project-card-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #1f2937;
+  margin-bottom: 4px;
+}
+
+.project-card-meta {
+  font-size: 14px;
+  color: #6b7280;
+  font-weight: 500;
+  margin-bottom: 8px;
+}
+
+.project-card-description {
+  font-size: 14px;
+  color: #3b82f6;
+  font-weight: 500;
+}
+
+/* Workspace Header Updates */
+.workspace-header-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.workspace-back-button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 10px;
+  font-weight: 500;
+  font-size: 14px;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  border: 2px solid #bfdbfe;
+  background: white;
+  color: #1d4ed8;
+}
+
+.workspace-back-button:hover {
+  background: #eff6ff;
+  border-color: #93c5fd;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
+}
+
+.workspace-back-button svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* Audio Empty Actions */
+.audio-empty-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin-top: 16px;
+}
+
+.audio-empty-actions .audio-empty-button {
+  flex: 1;
+  max-width: 140px;
 } 
