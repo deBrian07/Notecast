@@ -1,10 +1,33 @@
-import { Button } from '@/components/ui/button';
+import { Settings, LogOut } from 'lucide-react';
+import './Topbar.css';
+
 export default function Topbar(){
-  function logout(){ localStorage.removeItem('token'); window.location='/login'; }
+  function logout(){ 
+    localStorage.removeItem('token'); 
+    window.location='/login'; 
+  }
+  
   return(
-    <header className="h-14 px-4 flex items-center justify-between border-b bg-white">
-      <h2 className="font-bold text-lg">Notecast</h2>
-      <Button variant="outline" size="sm" onClick={logout}>Logout</Button>
+    <header className="topbar">
+      <div className="topbar-brand">
+        <div className="topbar-logo">
+          <span>N</span>
+        </div>
+        <h1 className="topbar-title">Notecast</h1>
+      </div>
+      
+      <div className="topbar-actions">
+        <button className="topbar-button topbar-button--ghost">
+          <Settings />
+        </button>
+        <button 
+          className="topbar-button topbar-button--outline"
+          onClick={logout}
+        >
+          <LogOut />
+          Logout
+        </button>
+      </div>
     </header>
   );
 }
