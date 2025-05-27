@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import axios from 'axios';
-import { PlayCircle, Play, Pause, Volume2, Download, Share, MoreHorizontal, FileText, MessageSquare, Clock, Plus, FolderPlus, Folder, ArrowLeft, Trash2 } from 'lucide-react';
+import { PlayCircle, Play, Pause, Volume2, Download, Share, MoreHorizontal, FileText, MessageSquare, Clock, Plus, FolderPlus, Folder, ArrowLeft, Trash2, Edit } from 'lucide-react';
 import './Workspace.css';
 
 export default function Workspace(){
@@ -23,6 +23,11 @@ export default function Workspace(){
   // Dropdown menu state
   const [showDropdown, setShowDropdown] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  
+  // Rename state
+  const [isRenaming, setIsRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState('');
+  const [showRenameModal, setShowRenameModal] = useState(false);
 
   const api = axios.create({
     baseURL: 'https://api.infinia.chat',
@@ -199,6 +204,53 @@ export default function Workspace(){
     } finally {
       setIsDeleting(false);
     }
+  };
+
+  const renameProject = () => {
+    if (!currentProject) return;
+    
+    setRenameValue(currentProject.name);
+    setShowRenameModal(true);
+    setShowDropdown(false);
+  };
+
+  const handleRenameSubmit = () => {
+    if (!currentProject || !renameValue.trim() || isRenaming) return;
+    
+    setIsRenaming(true);
+    
+    try {
+      // Update the project name
+      const updatedProject = { ...currentProject, name: renameValue.trim() };
+      
+      // Update in projects list
+      const updatedProjects = projects.map(p => 
+        p.id === currentProject.id ? updatedProject : p
+      );
+      
+      // Save to localStorage
+      saveProjectsToStorage(updatedProjects);
+      setProjects(updatedProjects);
+      setCurrentProject(updatedProject);
+      
+      // Close modal
+      setShowRenameModal(false);
+      setRenameValue('');
+      
+      console.log(`Successfully renamed project to "${updatedProject.name}"`);
+      
+    } catch (error) {
+      console.error('Error renaming project:', error);
+      alert('There was an error renaming the project. Please try again.');
+    } finally {
+      setIsRenaming(false);
+    }
+  };
+
+  const handleRenameCancel = () => {
+    setShowRenameModal(false);
+    setRenameValue('');
+    setIsRenaming(false);
   };
 
   // Close dropdown when clicking outside
@@ -785,6 +837,13 @@ export default function Workspace(){
                 {showDropdown && (
                   <div className="workspace-dropdown-menu">
                     <button 
+                      className="workspace-dropdown-item"
+                      onClick={renameProject}
+                    >
+                      <Edit />
+                      Rename Project
+                    </button>
+                    <button 
                       className="workspace-dropdown-item workspace-dropdown-item--danger"
                       onClick={deleteProject}
                       disabled={isDeleting}
@@ -828,6 +887,58 @@ export default function Workspace(){
       <div className="workspace-content">
         {renderTabContent()}
       </div>
+
+      {/* Rename Modal */}
+      {showRenameModal && (
+        <div 
+          className="rename-modal-overlay"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              handleRenameCancel();
+            }
+          }}
+        >
+          <div className="rename-modal">
+            <div className="rename-modal-header">
+              <h3 className="rename-modal-title">Rename Project</h3>
+            </div>
+            <div className="rename-modal-content">
+              <label className="rename-modal-label">Project Name</label>
+              <input
+                type="text"
+                value={renameValue}
+                onChange={(e) => setRenameValue(e.target.value)}
+                className="rename-modal-input"
+                placeholder="Enter project name"
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    handleRenameSubmit();
+                  } else if (e.key === 'Escape') {
+                    handleRenameCancel();
+                  }
+                }}
+              />
+            </div>
+            <div className="rename-modal-actions">
+              <button
+                onClick={handleRenameCancel}
+                className="rename-modal-button rename-modal-button--cancel"
+                disabled={isRenaming}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleRenameSubmit}
+                className="rename-modal-button rename-modal-button--save"
+                disabled={isRenaming || !renameValue.trim()}
+              >
+                {isRenaming ? 'Saving...' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
