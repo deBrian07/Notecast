@@ -129,6 +129,56 @@ export default function Workspace(){
     setLoading(false);
   }
 
+  async function loadExistingPodcast() {
+    if (!selected) return;
+    setLoading(true);
+
+    try {
+      // Get existing podcasts without generating new ones
+      const list = (await api.get('/generate')).data;
+      
+      console.log('Looking for existing podcasts for document_id:', selected.id);
+      console.log('Available podcasts:', list.map(p => ({ id: p.id, document_id: p.document_id, audio_filename: p.audio_filename })));
+      
+      // Find podcasts with matching document_id and audio_filename, prioritize most recent
+      const matchingPods = list
+        .filter(p => p.document_id === selected.id && p.audio_filename)
+        .sort((a, b) => b.id - a.id); // Sort by ID descending (most recent first)
+      
+      let pod = null;
+      if (matchingPods.length > 0) {
+        pod = matchingPods[0]; // Use the most recent matching podcast
+        console.log('Found existing podcast:', pod);
+      } else {
+        // Fallback: try to find by title match (for cases where document_id is None)
+        const recentPods = list
+          .filter(p => p.audio_filename) // Has audio
+          .sort((a, b) => b.id - a.id); // Sort by ID descending (most recent first)
+        
+        if (recentPods.length > 0) {
+          const mostRecent = recentPods[0];
+          if (mostRecent && mostRecent.title && mostRecent.title.includes(selected.orig_filename)) {
+            console.log('Found podcast by title match:', mostRecent);
+            pod = mostRecent;
+          }
+        }
+      }
+
+      if (pod) {
+        // Fetch existing audio blob
+        const res = await api.get(`/generate/${pod.id}/audio`, { responseType: 'blob' });
+        setAudio(URL.createObjectURL(res.data));
+      } else {
+        console.log('No existing podcast found for this document');
+        // Could show a message to user that no podcast exists yet
+      }
+    } catch (error) {
+      console.error('Error loading existing podcast:', error);
+    }
+    
+    setLoading(false);
+  }
+
   // No doc selected → friendly placeholder
   if (!selected) {
     return (
@@ -301,7 +351,7 @@ export default function Workspace(){
                     </div>
                     <p className="audio-empty-text">Click to load the conversation.</p>
                     <button 
-                      onClick={generate}
+                      onClick={loadExistingPodcast}
                       className="audio-empty-button"
                     >
                       Load
