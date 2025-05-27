@@ -68,23 +68,73 @@ def list_podcasts(db: Session = Depends(get_db),
 
 @router.get("/{podcast_id}/audio")
 def fetch_podcast_audio(podcast_id: int, current_user: User = Depends(get_current_user)):
+    print(f"[DEBUG] Fetching audio for podcast_id: {podcast_id}, user_id: {current_user.id}")
+    
     pod = get_podcast_by_id(podcast_id)
+    print(f"[DEBUG] Found podcast: {pod}")
+    
     if not pod:
+        print(f"[DEBUG] No podcast found with ID {podcast_id}")
         raise HTTPException(status_code=404, detail="Podcast not found")
 
     # Handle both SQLAlchemy model objects and Row objects
     user_id = pod.user_id if hasattr(pod, 'user_id') else pod['user_id']
     audio_filename = pod.audio_filename if hasattr(pod, 'audio_filename') else pod['audio_filename']
 
+    print(f"[DEBUG] Podcast user_id: {user_id}, current_user.id: {current_user.id}")
+    print(f"[DEBUG] Audio filename: {audio_filename}")
+
     if user_id != current_user.id:
+        print(f"[DEBUG] User ID mismatch: podcast belongs to user {user_id}, current user is {current_user.id}")
         raise HTTPException(status_code=404, detail="Podcast not found")
     
     # Check if the file exists before trying to serve it
     if not os.path.exists(audio_filename):
-        # Return a 404 with a specific message about the missing file
-        raise HTTPException(status_code=404, 
-                           detail=f"Audio file not found. It may have been deleted or moved.")
+        print(f"[DEBUG] Audio file does not exist at path: {audio_filename}")
+        
+        # Try to find a replacement file in the same directory
+        try:
+            dir_path = os.path.dirname(audio_filename)
+            if os.path.exists(dir_path):
+                files_in_dir = os.listdir(dir_path)
+                mp3_files = [f for f in files_in_dir if f.endswith('.mp3')]
+                print(f"[DEBUG] MP3 files in directory {dir_path}: {mp3_files}")
+                
+                if mp3_files:
+                    # Use the most recent MP3 file (highest timestamp)
+                    mp3_files.sort(reverse=True)  # Sort by filename (which includes timestamp)
+                    replacement_file = os.path.join(dir_path, mp3_files[0])
+                    print(f"[DEBUG] Using replacement file: {replacement_file}")
+                    
+                    # Update the database record with the new filename
+                    from models.database import SessionLocal
+                    db = SessionLocal()
+                    try:
+                        db.execute(
+                            text("UPDATE podcasts SET audio_filename = :new_filename WHERE id = :podcast_id"),
+                            {"new_filename": replacement_file, "podcast_id": podcast_id}
+                        )
+                        db.commit()
+                        print(f"[DEBUG] Updated podcast {podcast_id} audio_filename to {replacement_file}")
+                        audio_filename = replacement_file
+                    except Exception as e:
+                        print(f"[DEBUG] Failed to update database: {e}")
+                        db.rollback()
+                    finally:
+                        db.close()
+                else:
+                    print(f"[DEBUG] No MP3 files found in directory {dir_path}")
+            else:
+                print(f"[DEBUG] Directory {dir_path} does not exist")
+        except Exception as e:
+            print(f"[DEBUG] Error finding replacement file: {e}")
+        
+        # Check again if we found a replacement
+        if not os.path.exists(audio_filename):
+            raise HTTPException(status_code=404, 
+                               detail=f"Audio file not found. It may have been deleted or moved.")
     
+    print(f"[DEBUG] Audio file exists, serving: {audio_filename}")
     return FileResponse(audio_filename, media_type="audio/mpeg", filename=os.path.basename(audio_filename))
 
 

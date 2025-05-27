@@ -57,6 +57,11 @@ def create_podcast(user_id: int, document_id: int, title: str, script_text: str,
             return pod
         else:
             # Use raw SQL if column doesn't exist
+            # Ensure document_id is not None
+            if document_id is None:
+                print(f"Warning: document_id is None, this should not happen")
+                raise ValueError("document_id cannot be None")
+                
             data = {
                 "user_id": user_id,
                 "document_id": document_id,
@@ -65,9 +70,16 @@ def create_podcast(user_id: int, document_id: int, title: str, script_text: str,
                 "audio_filename": audio_filename,
                 "duration": duration
             }
-            columns = ", ".join(data.keys())
-            named_placeholders = ", ".join([f":{k}" for k in data.keys()])
-            db.execute(text(f"INSERT INTO podcasts ({columns}) VALUES ({named_placeholders})"), data)
+            
+            # Filter out None values to avoid SQL issues
+            filtered_data = {k: v for k, v in data.items() if v is not None}
+            
+            columns = ", ".join(filtered_data.keys())
+            named_placeholders = ", ".join([f":{k}" for k in filtered_data.keys()])
+            
+            print(f"Creating podcast with data: {filtered_data}")
+            
+            db.execute(text(f"INSERT INTO podcasts ({columns}) VALUES ({named_placeholders})"), filtered_data)
             db.commit()
             result = db.execute(text("SELECT last_insert_rowid()")).fetchone()
             last_id = result[0]
