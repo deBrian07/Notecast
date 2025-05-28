@@ -263,7 +263,7 @@ def fetch_podcast_audio(podcast_id: int, current_user: User = Depends(get_curren
 
 @router.get("/{podcast_id}/script")
 def fetch_podcast_script(podcast_id: int, current_user: User = Depends(get_current_user)):
-    """Fetch the script text for a podcast"""
+    """Fetch the script text and timing data for a podcast"""
     print(f"[DEBUG] Fetching script for podcast_id: {podcast_id}, user_id: {current_user.id}")
     
     pod = get_podcast_by_id(podcast_id)
@@ -278,16 +278,23 @@ def fetch_podcast_script(podcast_id: int, current_user: User = Depends(get_curre
         # SQLAlchemy model object
         project_id = pod.project_id
         script_text = pod.script_text
+        segment_timings = getattr(pod, 'segment_timings', None)
     else:
         # Raw SQL Row object - access by index or use _mapping
         if hasattr(pod, '_mapping'):
             # Use _mapping for newer SQLAlchemy versions
             project_id = pod._mapping['project_id']
             script_text = pod._mapping['script_text']
+            segment_timings = pod._mapping.get('segment_timings', None)
         else:
-            # Fallback to index access (assuming column order: id, title, description, audio_filename, project_id, document_id, script_text, duration)
+            # Fallback to index access (assuming column order: id, title, description, audio_filename, project_id, document_id, script_text, duration, segment_timings)
             project_id = pod[4]  # project_id is 5th column (index 4)
             script_text = pod[6]  # script_text is 7th column (index 6)
+            # Try to get segment_timings if it exists (9th column, index 8)
+            try:
+                segment_timings = pod[8] if len(pod) > 8 else None
+            except (IndexError, TypeError):
+                segment_timings = None
 
     print(f"[DEBUG] Podcast project_id: {project_id}, current_user.id: {current_user.id}")
 
@@ -301,7 +308,21 @@ def fetch_podcast_script(podcast_id: int, current_user: User = Depends(get_curre
         print(f"[DEBUG] No script text found for podcast {podcast_id}")
         raise HTTPException(status_code=404, detail="Script not found")
     
-    return {"script": script_text}
+    # Parse segment timings if available
+    parsed_timings = None
+    if segment_timings:
+        try:
+            import json
+            parsed_timings = json.loads(segment_timings)
+            print(f"[DEBUG] Loaded {len(parsed_timings)} timing segments")
+        except (json.JSONDecodeError, TypeError) as e:
+            print(f"[DEBUG] Failed to parse segment timings: {e}")
+            parsed_timings = None
+    
+    return {
+        "script": script_text,
+        "segment_timings": parsed_timings
+    }
 
 def _process_generation(user_id: int, doc):
     print(f"Starting podcast generation for document ID: {doc.id}, user ID: {user_id}")
@@ -315,11 +336,12 @@ def _process_generation(user_id: int, doc):
     script  = generate_podcast_script(summary)
     print(f"Generated script length: {len(script)} characters")
     
-    # 3. Produce audio
-    audio_path, duration = synthesize_podcast_audio(user_id, doc.id, script)
+    # 3. Produce audio with timing data
+    audio_path, duration, segment_timings = synthesize_podcast_audio(user_id, doc.id, script)
     print(f"Generated audio at: {audio_path}, duration: {duration}s")
+    print(f"Generated {len(segment_timings)} timing segments")
     
-    # 4. Store record
+    # 4. Store record with timing data
     title = f"Podcast of {doc.orig_filename}"
     print(f"Creating podcast record with title: {title}, document_id: {doc.id}, project_id: {doc.project_id}")
     
@@ -333,7 +355,9 @@ def _process_generation(user_id: int, doc):
         title=title,
         script_text=script,
         audio_filename=audio_path,
-        duration=duration
+        duration=duration,
+        segment_timings=segment_timings
     )
     
     print(f"Podcast created successfully with ID: {podcast.id if hasattr(podcast, 'id') else 'Unknown'}")
+    print(f"Stored timing data for {len(segment_timings)} segments")
