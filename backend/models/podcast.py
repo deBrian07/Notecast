@@ -24,26 +24,30 @@ def _check_created_at_column_exists(db):
 
 class Podcast(Base):
     __tablename__ = "podcasts"
-    id   = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, primary_key=True, index=True)
     title = Column(String, nullable=False)
     description = Column(Text, nullable=True)
     audio_filename = Column(String, nullable=True)
-    user_id    = Column(Integer, ForeignKey("users.id"), nullable=False)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=False)
     document_id = Column(Integer, ForeignKey("documents.id"), nullable=True)
     script_text = Column(Text, nullable=True)
     duration = Column(Integer, nullable=True)
     created_at = Column(DateTime, nullable=True)
+    
+    # Relationships
+    project = relationship("Project", back_populates="podcasts")
     # episodes = relationship("Episode", back_populates="podcast")
 
 
-def create_podcast(user_id: int, document_id: int, title: str, script_text: str, audio_filename: str, duration: float = None):
+def create_podcast(project_id: int, document_id: int, title: str, script_text: str, audio_filename: str, duration: float = None):
+    """Create a new podcast for a project"""
     db = SessionLocal()
     try:
         # Check if created_at column exists
         if _check_created_at_column_exists(db):
             # Use ORM if column exists
             pod = Podcast(
-                user_id=user_id,
+                project_id=project_id,
                 document_id=document_id,
                 title=title,
                 script_text=script_text,
@@ -63,7 +67,7 @@ def create_podcast(user_id: int, document_id: int, title: str, script_text: str,
                 raise ValueError("document_id cannot be None")
                 
             data = {
-                "user_id": user_id,
+                "project_id": project_id,
                 "document_id": document_id,
                 "title": title,
                 "script_text": script_text,
@@ -84,7 +88,7 @@ def create_podcast(user_id: int, document_id: int, title: str, script_text: str,
             result = db.execute(text("SELECT last_insert_rowid()")).fetchone()
             last_id = result[0]
             # Return raw data instead of trying to load ORM object
-            raw_pod_data = db.execute(text("SELECT id, title, description, audio_filename, user_id, document_id, script_text, duration FROM podcasts WHERE id = :id"), {"id": last_id}).fetchone()
+            raw_pod_data = db.execute(text("SELECT id, title, description, audio_filename, project_id, document_id, script_text, duration FROM podcasts WHERE id = :id"), {"id": last_id}).fetchone()
             return raw_pod_data
     except Exception as e:
         db.rollback()
@@ -94,15 +98,39 @@ def create_podcast(user_id: int, document_id: int, title: str, script_text: str,
         db.close()
 
 
-def get_podcasts_for_user(user_id: int):
+def get_podcasts_for_project(project_id: int):
+    """Get all podcasts for a specific project"""
     db = SessionLocal()
     try:
         if _check_created_at_column_exists(db):
-            return db.query(Podcast).filter(Podcast.user_id == user_id).all()
+            return db.query(Podcast).filter(Podcast.project_id == project_id).all()
         else:
             # Use raw SQL if column doesn't exist
             result = db.execute(
-                text("SELECT id, title, description, audio_filename, user_id, document_id, script_text, duration FROM podcasts WHERE user_id = :user_id"),
+                text("SELECT id, title, description, audio_filename, project_id, document_id, script_text, duration FROM podcasts WHERE project_id = :project_id"),
+                {"project_id": project_id}
+            ).fetchall()
+            return [dict(row._mapping) for row in result]
+    finally:
+        db.close()
+
+
+def get_podcasts_for_user(user_id: int):
+    """Get all podcasts for a user across all their projects"""
+    db = SessionLocal()
+    try:
+        if _check_created_at_column_exists(db):
+            from models.project import Project
+            return db.query(Podcast).join(Project).filter(Project.user_id == user_id).all()
+        else:
+            # Use raw SQL if column doesn't exist
+            result = db.execute(
+                text("""
+                    SELECT p.id, p.title, p.description, p.audio_filename, p.project_id, p.document_id, p.script_text, p.duration 
+                    FROM podcasts p 
+                    JOIN projects pr ON p.project_id = pr.id 
+                    WHERE pr.user_id = :user_id
+                """),
                 {"user_id": user_id}
             ).fetchall()
             return [dict(row._mapping) for row in result]
@@ -111,15 +139,43 @@ def get_podcasts_for_user(user_id: int):
 
 
 def get_podcast_by_id(podcast_id: int):
+    """Get a specific podcast by ID"""
     db = SessionLocal()
     try:
         if _check_created_at_column_exists(db):
             return db.query(Podcast).filter(Podcast.id == podcast_id).first()
         else:
             # Use raw SQL if column doesn't exist
-            stmt = text("SELECT id, title, description, audio_filename, user_id, document_id, script_text, duration FROM podcasts WHERE id = :podcast_id")
+            stmt = text("SELECT id, title, description, audio_filename, project_id, document_id, script_text, duration FROM podcasts WHERE id = :podcast_id")
             result = db.execute(stmt, {"podcast_id": podcast_id}).fetchone()
             return result
+    finally:
+        db.close()
+
+
+def delete_podcast(podcast_id: int):
+    """Delete a podcast"""
+    db = SessionLocal()
+    try:
+        if _check_created_at_column_exists(db):
+            podcast = db.query(Podcast).filter(Podcast.id == podcast_id).first()
+            if podcast:
+                db.delete(podcast)
+                db.commit()
+            return podcast
+        else:
+            # Use raw SQL if column doesn't exist
+            result = db.execute(
+                text("SELECT id, title, description, audio_filename, project_id, document_id, script_text, duration FROM podcasts WHERE id = :podcast_id"),
+                {"podcast_id": podcast_id}
+            ).fetchone()
+            if result:
+                db.execute(text("DELETE FROM podcasts WHERE id = :podcast_id"), {"podcast_id": podcast_id})
+                db.commit()
+            return result
+    except Exception as e:
+        db.rollback()
+        raise
     finally:
         db.close()
 

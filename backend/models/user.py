@@ -11,7 +11,9 @@ class User(Base):
     email = Column(String, unique=True, index=True, nullable=True)
     password_hash = Column(String, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
-    documents = relationship("Document", back_populates="user")
+    
+    # Relationships
+    projects = relationship("Project", back_populates="user", cascade="all, delete-orphan")
 
 
 def get_user_by_username(username: str):

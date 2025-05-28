@@ -14,6 +14,7 @@ from models.schemas import PodcastBase
 from services.file_service import get_document_text
 from services.summarization import generate_podcast_script, generate_summary
 from services.tts import synthesize_podcast_audio
+from models.project import get_project_by_id
 
 router = APIRouter(prefix="/generate", tags=["generate"])
 
@@ -24,8 +25,14 @@ def start_podcast_generation(
     current_user: User = Depends(get_current_user)
 ):
     doc = get_document_by_id(doc_id)
-    if not doc or doc.user_id != current_user.id:
+    if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
+    
+    # Verify the document belongs to a project owned by the current user
+    project = get_project_by_id(doc.project_id)
+    if not project or project.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
     background_tasks.add_task(_process_generation, current_user.id, doc)
     return {"detail": "Podcast generation started"}
 
@@ -43,10 +50,24 @@ def delete_podcast(
         raise HTTPException(status_code=404, detail="Podcast not found")
 
     # Handle both SQLAlchemy model objects and Row objects
-    user_id = pod.user_id if hasattr(pod, 'user_id') else pod['user_id']
-    audio_filename = pod.audio_filename if hasattr(pod, 'audio_filename') else pod['audio_filename']
+    if hasattr(pod, 'project_id'):
+        # SQLAlchemy model object
+        project_id = pod.project_id
+        audio_filename = pod.audio_filename
+    else:
+        # Raw SQL Row object - access by index or use _mapping
+        if hasattr(pod, '_mapping'):
+            # Use _mapping for newer SQLAlchemy versions
+            project_id = pod._mapping['project_id']
+            audio_filename = pod._mapping['audio_filename']
+        else:
+            # Fallback to index access (assuming column order: id, title, description, audio_filename, project_id, document_id, script_text, duration)
+            project_id = pod[4]  # project_id is 5th column (index 4)
+            audio_filename = pod[3]  # audio_filename is 4th column (index 3)
 
-    if user_id != current_user.id:
+    # Verify the podcast belongs to a project owned by the current user
+    project = get_project_by_id(project_id)
+    if not project or project.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Podcast not found")
     
     # Delete the audio file from disk
@@ -85,10 +106,24 @@ def delete_podcast_audio(
         raise HTTPException(status_code=404, detail="Podcast not found")
 
     # Handle both SQLAlchemy model objects and Row objects
-    user_id = pod.user_id if hasattr(pod, 'user_id') else pod['user_id']
-    audio_filename = pod.audio_filename if hasattr(pod, 'audio_filename') else pod['audio_filename']
+    if hasattr(pod, 'project_id'):
+        # SQLAlchemy model object
+        project_id = pod.project_id
+        audio_filename = pod.audio_filename
+    else:
+        # Raw SQL Row object - access by index or use _mapping
+        if hasattr(pod, '_mapping'):
+            # Use _mapping for newer SQLAlchemy versions
+            project_id = pod._mapping['project_id']
+            audio_filename = pod._mapping['audio_filename']
+        else:
+            # Fallback to index access (assuming column order: id, title, description, audio_filename, project_id, document_id, script_text, duration)
+            project_id = pod[4]  # project_id is 5th column (index 4)
+            audio_filename = pod[3]  # audio_filename is 4th column (index 3)
 
-    if user_id != current_user.id:
+    # Verify the podcast belongs to a project owned by the current user
+    project = get_project_by_id(project_id)
+    if not project or project.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Podcast not found")
     
     # Delete the audio file from disk
@@ -153,14 +188,28 @@ def fetch_podcast_audio(podcast_id: int, current_user: User = Depends(get_curren
         raise HTTPException(status_code=404, detail="Podcast not found")
 
     # Handle both SQLAlchemy model objects and Row objects
-    user_id = pod.user_id if hasattr(pod, 'user_id') else pod['user_id']
-    audio_filename = pod.audio_filename if hasattr(pod, 'audio_filename') else pod['audio_filename']
+    if hasattr(pod, 'project_id'):
+        # SQLAlchemy model object
+        project_id = pod.project_id
+        audio_filename = pod.audio_filename
+    else:
+        # Raw SQL Row object - access by index or use _mapping
+        if hasattr(pod, '_mapping'):
+            # Use _mapping for newer SQLAlchemy versions
+            project_id = pod._mapping['project_id']
+            audio_filename = pod._mapping['audio_filename']
+        else:
+            # Fallback to index access (assuming column order: id, title, description, audio_filename, project_id, document_id, script_text, duration)
+            project_id = pod[4]  # project_id is 5th column (index 4)
+            audio_filename = pod[3]  # audio_filename is 4th column (index 3)
 
-    print(f"[DEBUG] Podcast user_id: {user_id}, current_user.id: {current_user.id}")
+    print(f"[DEBUG] Podcast project_id: {project_id}, current_user.id: {current_user.id}")
     print(f"[DEBUG] Audio filename: {audio_filename}")
 
-    if user_id != current_user.id:
-        print(f"[DEBUG] User ID mismatch: podcast belongs to user {user_id}, current user is {current_user.id}")
+    # Verify the podcast belongs to a project owned by the current user
+    project = get_project_by_id(project_id)
+    if not project or project.user_id != current_user.id:
+        print(f"[DEBUG] Project access denied: project belongs to user {project.user_id if project else 'None'}, current user is {current_user.id}")
         raise HTTPException(status_code=404, detail="Podcast not found")
     
     # Check if the file exists before trying to serve it
@@ -231,13 +280,14 @@ def _process_generation(user_id: int, doc):
     
     # 4. Store record
     title = f"Podcast of {doc.orig_filename}"
-    print(f"Creating podcast record with title: {title}, document_id: {doc.id}")
+    print(f"Creating podcast record with title: {title}, document_id: {doc.id}, project_id: {doc.project_id}")
     
     # Make sure document_id is an integer
     doc_id = int(doc.id)
+    project_id = int(doc.project_id)
     
     podcast = create_podcast(
-        user_id=user_id,
+        project_id=project_id,
         document_id=doc_id,
         title=title,
         script_text=script,
@@ -245,4 +295,4 @@ def _process_generation(user_id: int, doc):
         duration=duration
     )
     
-    print(f"Podcast created successfully with ID: {podcast.id if podcast else 'Unknown'}")
+    print(f"Podcast created successfully with ID: {podcast.id if hasattr(podcast, 'id') else 'Unknown'}")

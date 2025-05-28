@@ -83,29 +83,49 @@ export default function Workspace(){
 
   const fetchProjects = async () => {
     try {
-      // Get projects from localStorage
-      const storedProjects = localStorage.getItem('notecast_projects');
-      let projects = storedProjects ? JSON.parse(storedProjects) : [];
+      const response = await api.get('/projects');
+      const backendProjects = response.data;
       
-      // Get all podcasts to check which projects have podcasts
-      const response = await api.get('/generate');
-      const allPodcasts = response.data;
+      // Convert backend projects to frontend format and add podcast status
+      const projectsWithPodcastStatus = await Promise.all(
+        backendProjects.map(async (project) => {
+          const podcastId = getProjectPodcastId(project.id);
+          let hasPodcast = false;
+          
+          if (podcastId) {
+            try {
+              const podcastResponse = await api.get('/generate');
+              const allPodcasts = podcastResponse.data;
+              hasPodcast = allPodcasts.some(p => p.id === podcastId && p.audio_filename);
+            } catch (error) {
+              console.error('Error checking podcast status:', error);
+            }
+          }
+          
+          return {
+            id: project.id,
+            name: project.name,
+            description: project.description,
+            created_at: project.created_at,
+            document_count: project.document_count,
+            has_podcast: hasPodcast
+          };
+        })
+      );
       
-      // Check each project for associated podcasts using our mapping
-      projects = projects.map(project => {
-        const podcastId = getProjectPodcastId(project.id);
-        const hasPodcast = podcastId && allPodcasts.some(p => p.id === podcastId && p.audio_filename);
-        
-        return {
-          ...project,
-          has_podcast: hasPodcast
-        };
-      });
+      setProjects(projectsWithPodcastStatus);
       
-      setProjects(projects);
+      // Also save to localStorage as backup
+      saveProjectsToStorage(projectsWithPodcastStatus);
     } catch (error) {
       console.error('Error fetching projects:', error);
-      setProjects([]);
+      // Fallback to localStorage if backend fails
+      const storedProjects = localStorage.getItem('notecast_projects');
+      if (storedProjects) {
+        setProjects(JSON.parse(storedProjects));
+      } else {
+        setProjects([]);
+      }
     }
   };
 
@@ -115,9 +135,8 @@ export default function Workspace(){
 
   const fetchProjectDocuments = async (projectId) => {
     try {
-      const response = await api.get('/documents');
-      // Filter documents by project (for now, we'll use all documents)
-      // In a real implementation, documents would be associated with projects
+      // Use the project-specific documents endpoint
+      const response = await api.get(`/documents/project/${projectId}`);
       setDocs(response.data);
     } catch (error) {
       console.error('Error fetching project documents:', error);
@@ -125,28 +144,43 @@ export default function Workspace(){
     }
   };
 
-  const createNewProject = () => {
-    const newProject = {
-      id: `new_${Date.now()}`,
-      name: `New Project ${new Date().toLocaleDateString()}`,
-      created_at: new Date().toISOString(),
-      document_count: 0,
-      has_podcast: false
-    };
-    
-    // Save to localStorage
-    const currentProjects = projects;
-    const updatedProjects = [...currentProjects, newProject];
-    saveProjectsToStorage(updatedProjects);
-    setProjects(updatedProjects);
-    
-    setCurrentProject(newProject);
-    setDocs([]);
-    setSelected(null);
-    setSelectedDoc(null);
-    setAudio('');
-    setShowProjectSelection(false);
-    setActiveTab('sources');
+  const createNewProject = async () => {
+    try {
+      const projectName = `New Project ${new Date().toLocaleDateString()}`;
+      
+      // Create project on backend
+      const response = await api.post('/projects', {
+        name: projectName,
+        description: null
+      });
+      
+      const newProject = {
+        id: response.data.id,
+        name: response.data.name,
+        description: response.data.description,
+        created_at: response.data.created_at,
+        document_count: 0,
+        has_podcast: false
+      };
+      
+      // Update local state
+      const updatedProjects = [...projects, newProject];
+      setProjects(updatedProjects);
+      saveProjectsToStorage(updatedProjects);
+      
+      setCurrentProject(newProject);
+      setDocs([]);
+      setSelected(null);
+      setSelectedDoc(null);
+      setAudio('');
+      setShowProjectSelection(false);
+      setActiveTab('sources');
+      
+      console.log(`Successfully created new project: ${newProject.name}`);
+    } catch (error) {
+      console.error('Error creating project:', error);
+      alert('There was an error creating the project. Please try again.');
+    }
   };
 
   const selectProject = async (project) => {
@@ -211,27 +245,11 @@ export default function Workspace(){
         removeProjectPodcastId(currentProject.id);
       }
       
-      // Delete all documents in the project
-      for (const doc of docs) {
-        try {
-          // Delete the actual document file from server storage (data/uploads)
-          await api.delete(`/documents/${doc.id}/file`);
-          console.log(`Deleted document file for ${doc.id}`);
-        } catch (error) {
-          console.error(`Error deleting document file for ${doc.id}:`, error);
-          // Continue with deletion even if file deletion fails
-        }
-        
-        try {
-          // Delete the document database entry
-          await api.delete(`/documents/${doc.id}`);
-          console.log(`Deleted document database entry ${doc.id}`);
-        } catch (error) {
-          console.error(`Error deleting document database entry ${doc.id}:`, error);
-        }
-      }
+      // Delete the project using backend API (this will cascade delete documents and podcasts)
+      await api.delete(`/projects/${currentProject.id}`);
+      console.log(`Deleted project ${currentProject.name} from backend`);
       
-      // Remove project from localStorage
+      // Remove project from local state
       const updatedProjects = projects.filter(p => p.id !== currentProject.id);
       saveProjectsToStorage(updatedProjects);
       setProjects(updatedProjects);
@@ -261,14 +279,23 @@ export default function Workspace(){
     setShowDropdown(false);
   };
 
-  const handleRenameSubmit = () => {
+  const handleRenameSubmit = async () => {
     if (!currentProject || !renameValue.trim() || isRenaming) return;
     
     setIsRenaming(true);
     
     try {
-      // Update the project name
-      const updatedProject = { ...currentProject, name: renameValue.trim() };
+      // Update the project name on backend
+      const response = await api.put(`/projects/${currentProject.id}`, {
+        name: renameValue.trim(),
+        description: currentProject.description
+      });
+      
+      const updatedProject = {
+        ...currentProject,
+        name: response.data.name,
+        description: response.data.description
+      };
       
       // Update in projects list
       const updatedProjects = projects.map(p => 
@@ -322,11 +349,26 @@ export default function Workspace(){
     const file = e.target.files[0]; 
     if (!file) return;
     
-    const form = new FormData(); 
-    form.append('file', file);
-    await api.post('/documents/upload', form);
-    const updatedDocs = (await api.get('/documents')).data;
-    setDocs(updatedDocs);
+    if (!currentProject) {
+      alert('Please select a project first before uploading documents.');
+      return;
+    }
+    
+    try {
+      const form = new FormData(); 
+      form.append('file', file);
+      
+      // Use the project-specific upload endpoint
+      await api.post(`/documents/upload/${currentProject.id}`, form);
+      
+      // Refresh the documents list for this project
+      await fetchProjectDocuments(currentProject.id);
+      
+      console.log(`Successfully uploaded ${file.name} to project ${currentProject.name}`);
+    } catch (error) {
+      console.error('Error uploading file:', error);
+      alert('There was an error uploading the file. Please try again.');
+    }
   };
 
   // Listen for "select-doc" custom event dispatched by Sidebar
