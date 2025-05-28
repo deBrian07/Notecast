@@ -32,6 +32,10 @@ export default function Workspace(){
   const [renameValue, setRenameValue] = useState('');
   const [showRenameModal, setShowRenameModal] = useState(false);
 
+  // Add script state
+  const [podcastScript, setPodcastScript] = useState('');
+  const [loadingScript, setLoadingScript] = useState(false);
+
   const api = axios.create({
     baseURL: 'https://api.infinia.chat',
     headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
@@ -198,6 +202,11 @@ export default function Workspace(){
       setCurrentProject(updatedProject);
       setShowProjectSelection(false);
       setActiveTab('sources');
+      
+      // Clear audio and script when switching projects
+      setAudio('');
+      setPodcastScript('');
+      setLoadingScript(false);
     } catch (error) {
       console.error('Error checking project podcast status:', error);
       // Fallback to using the project as-is
@@ -487,6 +496,9 @@ export default function Workspace(){
       setProjects(updatedProjects);
       setCurrentProject(updatedProject);
       
+      // Fetch the script for the new podcast
+      await fetchPodcastScript(newPodcast.id);
+      
       console.log(`New podcast generated successfully for project "${currentProject.name}". Use Load button to play it.`);
       
     } catch (error) {
@@ -613,6 +625,9 @@ export default function Workspace(){
       const res = await api.get(`/generate/${podcast.id}/audio`, { responseType: 'blob' });
       setAudio(URL.createObjectURL(res.data));
       
+      // Fetch podcast script
+      await fetchPodcastScript(podcast.id);
+      
     } catch (error) {
       console.error('Error loading existing podcast:', error);
       alert('There was an error loading the existing podcast. Please try again.');
@@ -620,6 +635,21 @@ export default function Workspace(){
     
     setLoading(false);
   }
+
+  // Function to fetch podcast script
+  const fetchPodcastScript = async (podcastId) => {
+    if (!podcastId) return;
+    
+    setLoadingScript(true);
+    try {
+      const response = await api.get(`/generate/${podcastId}/script`);
+      setPodcastScript(response.data.script || '');
+    } catch (error) {
+      console.error('Error fetching podcast script:', error);
+      setPodcastScript('');
+    }
+    setLoadingScript(false);
+  };
 
   const renderTabContent = () => {
     switch (activeTab) {
@@ -857,51 +887,61 @@ export default function Workspace(){
               </div>
             </section>
 
-            {/* RIGHT – Notes + Quick Actions */}
+            {/* RIGHT – Script Display */}
             <aside className="workspace-sidebar">
-              {/* Notes Section */}
-              <div className="notes-card">
-                <div className="notes-header">
-                  <h2 className="notes-title">Notes</h2>
+              {/* Script Section */}
+              <div className="script-card">
+                <div className="script-header">
+                  <h2 className="script-title">Podcast Script</h2>
                   <button className="workspace-button">
                     <MoreHorizontal />
                   </button>
                 </div>
-                <div className="notes-content">
-                  <div className="notes-empty-icon">
-                    <FileText />
-                  </div>
-                  <p className="notes-empty-text">No notes yet</p>
-                  <button className="notes-add-button">
-                    + Add note
-                  </button>
-                </div>
-              </div>
-
-              {/* Quick Actions */}
-              <div className="quick-actions">
-                <div className="quick-action-card">
-                  <div className="quick-action-icon">
-                    <FileText />
-                  </div>
-                  <h3 className="quick-action-title">Study guide</h3>
-                  <p className="quick-action-description">Generate study materials</p>
-                </div>
-
-                <div className="quick-action-card">
-                  <div className="quick-action-icon">
-                    <MessageSquare />
-                  </div>
-                  <h3 className="quick-action-title">FAQ</h3>
-                  <p className="quick-action-description">Common questions</p>
-                </div>
-
-                <div className="quick-action-card">
-                  <div className="quick-action-icon">
-                    <Clock />
-                  </div>
-                  <h3 className="quick-action-title">Timeline</h3>
-                  <p className="quick-action-description">Key events overview</p>
+                <div className="script-content">
+                  {loadingScript ? (
+                    <div className="script-loading">
+                      <div className="script-loading-spinner"></div>
+                      <p className="script-loading-text">Loading script...</p>
+                    </div>
+                  ) : podcastScript ? (
+                    <div className="script-text">
+                      {podcastScript.split('\n').map((line, index) => {
+                        const trimmedLine = line.trim();
+                        if (trimmedLine.startsWith('Host A:')) {
+                          return (
+                            <div key={index} className="script-line script-line-host-a">
+                              <span className="script-speaker">Host A:</span>
+                              <span className="script-dialogue">{trimmedLine.substring(7).trim()}</span>
+                            </div>
+                          );
+                        } else if (trimmedLine.startsWith('Host B:')) {
+                          return (
+                            <div key={index} className="script-line script-line-host-b">
+                              <span className="script-speaker">Host B:</span>
+                              <span className="script-dialogue">{trimmedLine.substring(7).trim()}</span>
+                            </div>
+                          );
+                        } else if (trimmedLine) {
+                          return (
+                            <div key={index} className="script-line script-line-narrative">
+                              {trimmedLine}
+                            </div>
+                          );
+                        }
+                        return null;
+                      })}
+                    </div>
+                  ) : (
+                    <div className="script-empty">
+                      <div className="script-empty-icon">
+                        <FileText />
+                      </div>
+                      <h3 className="script-empty-title">No script available</h3>
+                      <p className="script-empty-text">
+                        {audio ? 'Script not found for this podcast' : 'Generate or load a podcast to view the script'}
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
             </aside>

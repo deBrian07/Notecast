@@ -261,6 +261,47 @@ def fetch_podcast_audio(podcast_id: int, current_user: User = Depends(get_curren
     print(f"[DEBUG] Audio file exists, serving: {audio_filename}")
     return FileResponse(audio_filename, media_type="audio/mpeg", filename=os.path.basename(audio_filename))
 
+@router.get("/{podcast_id}/script")
+def fetch_podcast_script(podcast_id: int, current_user: User = Depends(get_current_user)):
+    """Fetch the script text for a podcast"""
+    print(f"[DEBUG] Fetching script for podcast_id: {podcast_id}, user_id: {current_user.id}")
+    
+    pod = get_podcast_by_id(podcast_id)
+    print(f"[DEBUG] Found podcast: {pod}")
+    
+    if not pod:
+        print(f"[DEBUG] No podcast found with ID {podcast_id}")
+        raise HTTPException(status_code=404, detail="Podcast not found")
+
+    # Handle both SQLAlchemy model objects and Row objects
+    if hasattr(pod, 'project_id'):
+        # SQLAlchemy model object
+        project_id = pod.project_id
+        script_text = pod.script_text
+    else:
+        # Raw SQL Row object - access by index or use _mapping
+        if hasattr(pod, '_mapping'):
+            # Use _mapping for newer SQLAlchemy versions
+            project_id = pod._mapping['project_id']
+            script_text = pod._mapping['script_text']
+        else:
+            # Fallback to index access (assuming column order: id, title, description, audio_filename, project_id, document_id, script_text, duration)
+            project_id = pod[4]  # project_id is 5th column (index 4)
+            script_text = pod[6]  # script_text is 7th column (index 6)
+
+    print(f"[DEBUG] Podcast project_id: {project_id}, current_user.id: {current_user.id}")
+
+    # Verify the podcast belongs to a project owned by the current user
+    project = get_project_by_id(project_id)
+    if not project or project.user_id != current_user.id:
+        print(f"[DEBUG] Project access denied: project belongs to user {project.user_id if project else 'None'}, current user is {current_user.id}")
+        raise HTTPException(status_code=404, detail="Podcast not found")
+    
+    if not script_text:
+        print(f"[DEBUG] No script text found for podcast {podcast_id}")
+        raise HTTPException(status_code=404, detail="Script not found")
+    
+    return {"script": script_text}
 
 def _process_generation(user_id: int, doc):
     print(f"Starting podcast generation for document ID: {doc.id}, user ID: {user_id}")
