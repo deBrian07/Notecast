@@ -32,6 +32,14 @@ export default function Workspace(){
   const [renameValue, setRenameValue] = useState('');
   const [showRenameModal, setShowRenameModal] = useState(false);
 
+  // Add script state
+  const [podcastScript, setPodcastScript] = useState('');
+  const [loadingScript, setLoadingScript] = useState(false);
+  const [scriptSegments, setScriptSegments] = useState([]);
+  const [currentSegmentIndex, setCurrentSegmentIndex] = useState(-1);
+  const [timingCalibration, setTimingCalibration] = useState(1.0); // Calibration factor
+  const [lastCalibrationTime, setLastCalibrationTime] = useState(0);
+
   const api = axios.create({
     baseURL: 'https://api.infinia.chat',
     headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
@@ -173,6 +181,11 @@ export default function Workspace(){
       setSelected(null);
       setSelectedDoc(null);
       setAudio('');
+      setPodcastScript('');
+      setScriptSegments([]);
+      setCurrentSegmentIndex(-1);
+      setTimingCalibration(1.0);
+      setLastCalibrationTime(0);
       setShowProjectSelection(false);
       setActiveTab('sources');
       
@@ -198,6 +211,15 @@ export default function Workspace(){
       setCurrentProject(updatedProject);
       setShowProjectSelection(false);
       setActiveTab('sources');
+      
+      // Clear audio and script when switching projects
+      setAudio('');
+      setPodcastScript('');
+      setLoadingScript(false);
+      setScriptSegments([]);
+      setCurrentSegmentIndex(-1);
+      setTimingCalibration(1.0);
+      setLastCalibrationTime(0);
     } catch (error) {
       console.error('Error checking project podcast status:', error);
       // Fallback to using the project as-is
@@ -213,6 +235,11 @@ export default function Workspace(){
     setSelected(null);
     setSelectedDoc(null);
     setAudio('');
+    setPodcastScript('');
+    setScriptSegments([]);
+    setCurrentSegmentIndex(-1);
+    setTimingCalibration(1.0);
+    setLastCalibrationTime(0);
     fetchProjects(); // Refresh projects list
   };
 
@@ -261,6 +288,11 @@ export default function Workspace(){
       setSelected(null);
       setSelectedDoc(null);
       setAudio('');
+      setPodcastScript('');
+      setScriptSegments([]);
+      setCurrentSegmentIndex(-1);
+      setTimingCalibration(1.0);
+      setLastCalibrationTime(0);
       
       console.log(`Successfully deleted project "${currentProject.name}" and all associated files`);
       
@@ -377,6 +409,11 @@ export default function Workspace(){
     const handler = e => {
       setSelected(e.detail);
       setAudio('');
+      setPodcastScript('');
+      setScriptSegments([]);
+      setCurrentSegmentIndex(-1);
+      setTimingCalibration(1.0);
+      setLastCalibrationTime(0);
       setIsPlaying(false);
       setCurrentTime(0);
       setDuration(0);
@@ -388,9 +425,15 @@ export default function Workspace(){
   // Audio event handlers
   useEffect(() => {
     if (audioRef) {
-      const updateTime = () => setCurrentTime(audioRef.currentTime);
+      const updateTime = () => {
+        setCurrentTime(audioRef.currentTime);
+        updateCurrentSegment(audioRef.currentTime);
+      };
       const updateDuration = () => setDuration(audioRef.duration);
-      const handleEnded = () => setIsPlaying(false);
+      const handleEnded = () => {
+        setIsPlaying(false);
+        setCurrentSegmentIndex(-1);
+      };
 
       audioRef.addEventListener('timeupdate', updateTime);
       audioRef.addEventListener('loadedmetadata', updateDuration);
@@ -402,7 +445,132 @@ export default function Workspace(){
         audioRef.removeEventListener('ended', handleEnded);
       };
     }
-  }, [audioRef]);
+  }, [audioRef, scriptSegments]);
+
+  // Function to update current segment based on audio time
+  const updateCurrentSegment = (currentTime) => {
+    if (scriptSegments.length === 0) return;
+    
+    // For backend timing data, we don't need calibration as much since it's accurate
+    // But we can still apply minimal calibration for fine-tuning
+    const calibratedTime = currentTime * timingCalibration;
+    
+    const segmentIndex = scriptSegments.findIndex(segment => {
+      // Handle both old format (startTime/endTime) and new format (start_time/end_time)
+      const startTime = segment.start_time !== undefined ? segment.start_time : segment.startTime;
+      const endTime = segment.end_time !== undefined ? segment.end_time : segment.endTime;
+      
+      return calibratedTime >= startTime && calibratedTime < endTime;
+    });
+    
+    if (segmentIndex !== -1 && segmentIndex !== currentSegmentIndex) {
+      setCurrentSegmentIndex(segmentIndex);
+      
+      // Only apply dynamic calibration if we're using estimated timing (fallback)
+      // For backend timing data, we trust it more and apply minimal calibration
+      const hasBackendTiming = scriptSegments[0] && scriptSegments[0].start_time !== undefined;
+      if (!hasBackendTiming) {
+        performDynamicCalibration(currentTime, segmentIndex);
+      } else {
+        // Minimal calibration for backend timing data
+        performMinimalCalibration(currentTime, segmentIndex);
+      }
+      
+      // Auto-scroll to current segment
+      const segmentElement = document.querySelector(`[data-segment-index="${segmentIndex}"]`);
+      if (segmentElement) {
+        segmentElement.scrollIntoView({ 
+          behavior: 'smooth', 
+          block: 'center' 
+        });
+      }
+    }
+  };
+
+  // Function to perform dynamic timing calibration
+  const performDynamicCalibration = (currentTime, segmentIndex) => {
+    // Only calibrate after we've been playing for a while and have enough data
+    if (currentTime < 30 || segmentIndex < 5) return;
+    
+    // Only calibrate every 30 seconds to avoid over-correction
+    if (currentTime - lastCalibrationTime < 30) return;
+    
+    const currentSegment = scriptSegments[segmentIndex];
+    if (!currentSegment) return;
+    
+    // Calculate expected time vs actual time
+    const expectedTime = currentSegment.startTime / timingCalibration;
+    const actualTime = currentTime;
+    const timeDrift = actualTime - expectedTime;
+    
+    // If drift is significant (more than 3 seconds), adjust calibration
+    if (Math.abs(timeDrift) > 3) {
+      const newCalibration = actualTime / currentSegment.startTime;
+      
+      // Smooth the calibration change to avoid sudden jumps
+      const smoothedCalibration = timingCalibration * 0.8 + newCalibration * 0.2;
+      
+      // Limit calibration to reasonable bounds (0.7x to 1.3x)
+      const boundedCalibration = Math.max(0.7, Math.min(1.3, smoothedCalibration));
+      
+      if (Math.abs(boundedCalibration - timingCalibration) > 0.05) {
+        setTimingCalibration(boundedCalibration);
+        setLastCalibrationTime(currentTime);
+        console.log(`Timing calibration adjusted to ${boundedCalibration.toFixed(3)} (drift: ${timeDrift.toFixed(1)}s)`);
+      }
+    }
+  };
+
+  // Function to perform minimal timing calibration for backend timing data
+  const performMinimalCalibration = (currentTime, segmentIndex) => {
+    // Only calibrate after we've been playing for a while and have enough data
+    if (currentTime < 60 || segmentIndex < 10) return;
+    
+    // Only calibrate every 60 seconds to avoid over-correction for accurate backend data
+    if (currentTime - lastCalibrationTime < 60) return;
+    
+    const currentSegment = scriptSegments[segmentIndex];
+    if (!currentSegment) return;
+    
+    // Calculate expected time vs actual time
+    const startTime = currentSegment.start_time !== undefined ? currentSegment.start_time : currentSegment.startTime;
+    const expectedTime = startTime / timingCalibration;
+    const actualTime = currentTime;
+    const timeDrift = actualTime - expectedTime;
+    
+    // Only adjust if drift is very significant (more than 5 seconds) for backend timing
+    if (Math.abs(timeDrift) > 5) {
+      const newCalibration = actualTime / startTime;
+      
+      // Very gentle calibration change for backend timing
+      const smoothedCalibration = timingCalibration * 0.95 + newCalibration * 0.05;
+      
+      // Tighter bounds for backend timing (0.9x to 1.1x)
+      const boundedCalibration = Math.max(0.9, Math.min(1.1, smoothedCalibration));
+      
+      if (Math.abs(boundedCalibration - timingCalibration) > 0.02) {
+        setTimingCalibration(boundedCalibration);
+        setLastCalibrationTime(currentTime);
+        console.log(`Minimal timing calibration adjusted to ${boundedCalibration.toFixed(3)} (drift: ${timeDrift.toFixed(1)}s)`);
+      }
+    }
+  };
+
+  // Function to handle clicking on script segments to jump to that time
+  const handleSegmentClick = (segmentIndex) => {
+    if (!audioRef || scriptSegments.length === 0) return;
+    
+    const segment = scriptSegments[segmentIndex];
+    if (segment) {
+      // Handle both old format (startTime) and new format (start_time)
+      const startTime = segment.start_time !== undefined ? segment.start_time : segment.startTime;
+      
+      // Apply inverse calibration when jumping to a segment
+      const targetTime = startTime / timingCalibration;
+      audioRef.currentTime = targetTime;
+      setCurrentSegmentIndex(segmentIndex);
+    }
+  };
 
   const togglePlayPause = () => {
     if (audioRef) {
@@ -486,6 +654,9 @@ export default function Workspace(){
       saveProjectsToStorage(updatedProjects);
       setProjects(updatedProjects);
       setCurrentProject(updatedProject);
+      
+      // Fetch the script for the new podcast
+      await fetchPodcastScript(newPodcast.id);
       
       console.log(`New podcast generated successfully for project "${currentProject.name}". Use Load button to play it.`);
       
@@ -613,6 +784,9 @@ export default function Workspace(){
       const res = await api.get(`/generate/${podcast.id}/audio`, { responseType: 'blob' });
       setAudio(URL.createObjectURL(res.data));
       
+      // Fetch podcast script
+      await fetchPodcastScript(podcast.id);
+      
     } catch (error) {
       console.error('Error loading existing podcast:', error);
       alert('There was an error loading the existing podcast. Please try again.');
@@ -620,6 +794,170 @@ export default function Workspace(){
     
     setLoading(false);
   }
+
+  // Function to fetch podcast script
+  const fetchPodcastScript = async (podcastId) => {
+    if (!podcastId) return;
+    
+    setLoadingScript(true);
+    try {
+      const response = await api.get(`/generate/${podcastId}/script`);
+      const script = response.data.script || '';
+      const segmentTimings = response.data.segment_timings || [];
+      
+      setPodcastScript(script);
+      
+      // Use timing data from backend if available
+      if (segmentTimings && segmentTimings.length > 0) {
+        console.log('Using accurate timing data from backend:', segmentTimings);
+        setScriptSegments(segmentTimings);
+        setTimingCalibration(1.0); // Reset calibration since we have accurate timing
+        setLastCalibrationTime(0);
+      } else {
+        console.log('No timing data from backend, falling back to estimation');
+        // Fallback to estimation if no timing data available
+        if (script) {
+          parseScriptSegments(script);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching podcast script:', error);
+      setPodcastScript('');
+      setScriptSegments([]);
+      setTimingCalibration(1.0);
+      setLastCalibrationTime(0);
+    }
+    setLoadingScript(false);
+  };
+
+  // Function to parse script into timed segments
+  const parseScriptSegments = (script) => {
+    const lines = script.split('\n').filter(line => line.trim());
+    const segments = [];
+    let currentTime = 0;
+    
+    // More realistic speaking rates and pauses
+    const baseWordsPerSecond = 2.0; // Slightly slower base rate
+    const pauseBetweenSpeakers = 1.2; // Longer pause between speakers
+    const pauseForPunctuation = 0.4; // Longer pause for punctuation
+    const pauseForComma = 0.2; // Shorter pause for commas
+    const introOutroPause = 2.0; // Extra pause for intro/outro sections
+    
+    lines.forEach((line, index) => {
+      const trimmedLine = line.trim();
+      if (!trimmedLine) return;
+      
+      const startTime = currentTime;
+      
+      // Count words in the line
+      let text = trimmedLine;
+      let isHostLine = false;
+      if (trimmedLine.startsWith('Host A:') || trimmedLine.startsWith('Host B:')) {
+        text = trimmedLine.substring(7).trim();
+        isHostLine = true;
+      }
+      
+      const wordCount = text.split(/\s+/).length;
+      
+      // Adjust speaking rate based on content type
+      let wordsPerSecond = baseWordsPerSecond;
+      
+      // Slower for questions (indicated by ?)
+      if (text.includes('?')) {
+        wordsPerSecond *= 0.85;
+      }
+      
+      // Slower for emphasis (indicated by ! or ALL CAPS words)
+      if (text.includes('!') || /[A-Z]{3,}/.test(text)) {
+        wordsPerSecond *= 0.9;
+      }
+      
+      // Faster for simple statements
+      if (wordCount < 5) {
+        wordsPerSecond *= 1.1;
+      }
+      
+      // Very slow for intro/outro phrases
+      if (text.toLowerCase().includes('welcome') || 
+          text.toLowerCase().includes('thank you') ||
+          text.toLowerCase().includes('that\'s all') ||
+          text.toLowerCase().includes('see you')) {
+        wordsPerSecond *= 0.7;
+        currentTime += introOutroPause;
+      }
+      
+      const baseDuration = wordCount / wordsPerSecond;
+      
+      // Add extra time for punctuation with more nuanced timing
+      const periodCount = (text.match(/[.!]/g) || []).length;
+      const questionCount = (text.match(/[?]/g) || []).length;
+      const commaCount = (text.match(/[,;:]/g) || []).length;
+      const ellipsisCount = (text.match(/\.\.\./g) || []).length;
+      
+      const punctuationTime = 
+        periodCount * pauseForPunctuation + 
+        questionCount * (pauseForPunctuation * 1.3) + // Questions get longer pauses
+        commaCount * pauseForComma +
+        ellipsisCount * (pauseForPunctuation * 2); // Ellipsis gets much longer pause
+      
+      // Add natural variation to prevent perfect timing (real speech isn't perfectly timed)
+      const variationFactor = 0.9 + (Math.random() * 0.2); // ±10% variation
+      const duration = (baseDuration + punctuationTime) * variationFactor;
+      
+      segments.push({
+        index,
+        text: trimmedLine,
+        startTime,
+        endTime: currentTime + duration,
+        duration,
+        wordCount,
+        isHostLine
+      });
+      
+      currentTime += duration;
+      
+      // Add pause between different speakers with more context
+      const nextLine = lines[index + 1];
+      if (nextLine && isHostLine) {
+        const currentSpeaker = trimmedLine.startsWith('Host A:') ? 'A' : 'B';
+        const nextSpeaker = nextLine.startsWith('Host A:') ? 'A' : 
+                           nextLine.startsWith('Host B:') ? 'B' : null;
+        
+        if (nextSpeaker && currentSpeaker !== nextSpeaker) {
+          // Longer pause if the current line ends with a question
+          const speakerPause = text.endsWith('?') ? 
+            pauseBetweenSpeakers * 1.5 : pauseBetweenSpeakers;
+          currentTime += speakerPause;
+        }
+      }
+      
+      // Add small pause after narrative sections
+      if (!isHostLine && nextLine && (nextLine.startsWith('Host A:') || nextLine.startsWith('Host B:'))) {
+        currentTime += pauseForPunctuation;
+      }
+    });
+    
+    // Apply time scaling to better match actual audio duration
+    // This helps correct for cumulative timing drift
+    if (duration > 0 && segments.length > 0) {
+      const estimatedTotalTime = currentTime;
+      const actualDuration = duration; // From audio metadata
+      const scaleFactor = actualDuration / estimatedTotalTime;
+      
+      // Only apply scaling if the difference is significant (more than 10%)
+      if (Math.abs(scaleFactor - 1) > 0.1) {
+        segments.forEach(segment => {
+          segment.startTime *= scaleFactor;
+          segment.endTime *= scaleFactor;
+          segment.duration *= scaleFactor;
+        });
+        console.log(`Applied time scaling factor: ${scaleFactor.toFixed(3)}`);
+      }
+    }
+    
+    setScriptSegments(segments);
+    console.log('Parsed script segments with improved timing:', segments);
+  };
 
   const renderTabContent = () => {
     switch (activeTab) {
@@ -857,51 +1195,123 @@ export default function Workspace(){
               </div>
             </section>
 
-            {/* RIGHT – Notes + Quick Actions */}
+            {/* RIGHT – Script Display */}
             <aside className="workspace-sidebar">
-              {/* Notes Section */}
-              <div className="notes-card">
-                <div className="notes-header">
-                  <h2 className="notes-title">Notes</h2>
-                  <button className="workspace-button">
-                    <MoreHorizontal />
-                  </button>
-                </div>
-                <div className="notes-content">
-                  <div className="notes-empty-icon">
-                    <FileText />
+              {/* Script Section */}
+              <div className="script-card">
+                <div className="script-header">
+                  <h2 className="script-title">Podcast Script</h2>
+                  <div className="script-header-actions">
+                    {Math.abs(timingCalibration - 1.0) > 0.1 && (
+                      <div className="timing-calibration-indicator" title={`Timing adjusted by ${((timingCalibration - 1) * 100).toFixed(1)}%`}>
+                        <span className="calibration-icon">⚡</span>
+                        <span className="calibration-text">{(timingCalibration * 100).toFixed(0)}%</span>
+                      </div>
+                    )}
+                    <button className="workspace-button">
+                      <MoreHorizontal />
+                    </button>
                   </div>
-                  <p className="notes-empty-text">No notes yet</p>
-                  <button className="notes-add-button">
-                    + Add note
-                  </button>
                 </div>
-              </div>
-
-              {/* Quick Actions */}
-              <div className="quick-actions">
-                <div className="quick-action-card">
-                  <div className="quick-action-icon">
-                    <FileText />
-                  </div>
-                  <h3 className="quick-action-title">Study guide</h3>
-                  <p className="quick-action-description">Generate study materials</p>
-                </div>
-
-                <div className="quick-action-card">
-                  <div className="quick-action-icon">
-                    <MessageSquare />
-                  </div>
-                  <h3 className="quick-action-title">FAQ</h3>
-                  <p className="quick-action-description">Common questions</p>
-                </div>
-
-                <div className="quick-action-card">
-                  <div className="quick-action-icon">
-                    <Clock />
-                  </div>
-                  <h3 className="quick-action-title">Timeline</h3>
-                  <p className="quick-action-description">Key events overview</p>
+                <div className="script-content">
+                  {loadingScript ? (
+                    <div className="script-loading">
+                      <div className="script-loading-spinner"></div>
+                      <p className="script-loading-text">Loading script...</p>
+                    </div>
+                  ) : podcastScript ? (
+                    <div className="script-text">
+                      {scriptSegments.length > 0 ? (
+                        scriptSegments.map((segment, index) => {
+                          // Handle both old format and new backend format
+                          const trimmedLine = segment.text ? segment.text.trim() : '';
+                          const isCurrentSegment = index === currentSegmentIndex;
+                          const startTime = segment.start_time !== undefined ? segment.start_time : segment.startTime;
+                          
+                          if (trimmedLine.startsWith('Host A:')) {
+                            return (
+                              <div 
+                                key={index} 
+                                data-segment-index={index}
+                                className={`script-line script-line-host-a ${isCurrentSegment ? 'script-line-current' : ''} ${audio ? 'script-line-clickable' : ''}`}
+                                onClick={() => audio && handleSegmentClick(index)}
+                                title={audio && startTime !== undefined ? `Jump to ${Math.floor(startTime / 60)}:${Math.floor(startTime % 60).toString().padStart(2, '0')}` : ''}
+                              >
+                                <span className="script-speaker">Host A:</span>
+                                <span className="script-dialogue">{trimmedLine.substring(7).trim()}</span>
+                                {isCurrentSegment && <div className="script-progress-indicator"></div>}
+                              </div>
+                            );
+                          } else if (trimmedLine.startsWith('Host B:')) {
+                            return (
+                              <div 
+                                key={index} 
+                                data-segment-index={index}
+                                className={`script-line script-line-host-b ${isCurrentSegment ? 'script-line-current' : ''} ${audio ? 'script-line-clickable' : ''}`}
+                                onClick={() => audio && handleSegmentClick(index)}
+                                title={audio && startTime !== undefined ? `Jump to ${Math.floor(startTime / 60)}:${Math.floor(startTime % 60).toString().padStart(2, '0')}` : ''}
+                              >
+                                <span className="script-speaker">Host B:</span>
+                                <span className="script-dialogue">{trimmedLine.substring(7).trim()}</span>
+                                {isCurrentSegment && <div className="script-progress-indicator"></div>}
+                              </div>
+                            );
+                          } else if (trimmedLine) {
+                            return (
+                              <div 
+                                key={index} 
+                                data-segment-index={index}
+                                className={`script-line script-line-narrative ${isCurrentSegment ? 'script-line-current' : ''} ${audio ? 'script-line-clickable' : ''}`}
+                                onClick={() => audio && handleSegmentClick(index)}
+                                title={audio && startTime !== undefined ? `Jump to ${Math.floor(startTime / 60)}:${Math.floor(startTime % 60).toString().padStart(2, '0')}` : ''}
+                              >
+                                {trimmedLine}
+                                {isCurrentSegment && <div className="script-progress-indicator"></div>}
+                              </div>
+                            );
+                          }
+                          return null;
+                        })
+                      ) : (
+                        // Fallback to original parsing if segments aren't available
+                        podcastScript.split('\n').map((line, index) => {
+                          const trimmedLine = line.trim();
+                          if (trimmedLine.startsWith('Host A:')) {
+                            return (
+                              <div key={index} className="script-line script-line-host-a">
+                                <span className="script-speaker">Host A:</span>
+                                <span className="script-dialogue">{trimmedLine.substring(7).trim()}</span>
+                              </div>
+                            );
+                          } else if (trimmedLine.startsWith('Host B:')) {
+                            return (
+                              <div key={index} className="script-line script-line-host-b">
+                                <span className="script-speaker">Host B:</span>
+                                <span className="script-dialogue">{trimmedLine.substring(7).trim()}</span>
+                              </div>
+                            );
+                          } else if (trimmedLine) {
+                            return (
+                              <div key={index} className="script-line script-line-narrative">
+                                {trimmedLine}
+                              </div>
+                            );
+                          }
+                          return null;
+                        })
+                      )}
+                    </div>
+                  ) : (
+                    <div className="script-empty">
+                      <div className="script-empty-icon">
+                        <FileText />
+                      </div>
+                      <h3 className="script-empty-title">No script available</h3>
+                      <p className="script-empty-text">
+                        {audio ? 'Script not found for this podcast' : 'Generate or load a podcast to view the script'}
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
             </aside>

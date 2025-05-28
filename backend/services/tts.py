@@ -442,45 +442,86 @@ def _get_speaker_id_for_voice(voice_preset: str, model) -> int:
 # Public API: generate a podcast MP3 from a script
 # ---------------------------------------------------------------------------
 
-def synthesize_podcast_audio(user_id: int, doc_id: int, script: str) -> Tuple[str, float]:
+def synthesize_podcast_audio(user_id: int, doc_id: int, script: str) -> Tuple[str, float, List[Dict]]:
     """
     Generate an MP3 podcast using VITS for improved naturalness.
     Falls back to FastPitch + HiFiGAN if VITS is unavailable.
+    Returns: (filepath, total_duration, segment_timings)
     """
     print(f"[TTS] Starting synthesis with VITS for improved naturalness (~{len(script)} chars)...")
     print(f"[TTS] Voice presets - Female: '{settings.tts_voice_female}', Male: '{settings.tts_voice_male}'")
     
-    # Parse script: extract speaker lines
-    segments: List[Tuple[str, str]] = []
+    # Parse script: extract speaker lines with original text
+    segments: List[Tuple[str, str, str]] = []  # (speaker, text, original_line)
     for raw in script.splitlines():
         line = raw.strip()
         if line.startswith("Host A:"):
-            segments.append(("female", line.split(":", 1)[1].strip()))
+            text = line.split(":", 1)[1].strip()
+            segments.append(("female", text, line))
         elif line.startswith("Host B:"):
-            segments.append(("male", line.split(":", 1)[1].strip()))
+            text = line.split(":", 1)[1].strip()
+            segments.append(("male", text, line))
+        elif line.strip():  # Non-empty narrative lines
+            segments.append(("narrative", line, line))
 
     # Fallback: chunk long summary for single-voice TTS
     if not segments and script.strip():
         raw = script.strip()
         # Use smaller chunks for better naturalness
         chunks = textwrap.wrap(raw, width=200, break_long_words=False, replace_whitespace=False)
-        segments = [("female", chunk) for chunk in chunks]
+        segments = [("female", chunk, chunk) for chunk in chunks]
 
     if not segments:
         raise ValueError("No text segments found to synthesize")
 
-    # Dispatch synthesis in parallel across 2 GPUs using VITS
+    # Dispatch synthesis using single GPU to ensure consistent voices
     audio_chunks: List[AudioSegment] = []
+    segment_timings: List[Dict] = []
+    current_time = 0.0
+    
     with ThreadPoolExecutor(max_workers=2) as executor:
         futures = []
-        for i, (speaker, text) in enumerate(segments):
+        for i, (speaker, text, original_line) in enumerate(segments):
+            if speaker == "narrative":
+                # Skip narrative lines for audio but track them for timing
+                segment_timings.append({
+                    "index": i,
+                    "text": original_line,
+                    "speaker": "narrative",
+                    "start_time": current_time,
+                    "end_time": current_time,  # No duration for narrative
+                    "duration": 0.0
+                })
+                continue
+                
             preset = settings.tts_voice_female if speaker == "female" else settings.tts_voice_male
-            device_str = f"cuda:{i % 2}"
+            device_str = "cuda:0"  # Use same GPU for all synthesis to ensure consistent voices
+            print(f"[TTS] Segment {i}: {speaker} speaker using preset '{preset}' on {device_str}")
             # Use VITS for better naturalness
-            futures.append(executor.submit(_synthesize_line_vits, preset, text, device_str))
+            futures.append((i, speaker, text, original_line, executor.submit(_synthesize_line_vits, preset, text, device_str)))
         
-        for fut in futures:
-            audio_chunks.append(fut.result())
+        for i, speaker, text, original_line, fut in futures:
+            audio_chunk = fut.result()
+            audio_chunks.append(audio_chunk)
+            
+            # Calculate timing for this segment
+            chunk_duration = len(audio_chunk) / 1000.0  # Convert ms to seconds
+            
+            segment_timings.append({
+                "index": i,
+                "text": original_line,
+                "speaker": speaker,
+                "start_time": current_time,
+                "end_time": current_time + chunk_duration,
+                "duration": chunk_duration
+            })
+            
+            current_time += chunk_duration
+            
+            # Add pause between speakers (except for last segment)
+            if i < len([s for s in segments if s[0] != "narrative"]) - 1:
+                pause_duration = 0.5  # 500ms pause
+                current_time += pause_duration
 
     # Concatenate all chunks with natural transitions
     if not audio_chunks:
@@ -508,7 +549,16 @@ def synthesize_podcast_audio(user_id: int, doc_id: int, script: str) -> Tuple[st
         parameters=["-q:a", "0"]  # Highest quality
     )
 
-    return str(filepath), len(podcast) / 1000.0
+    total_duration = len(podcast) / 1000.0
+    
+    # Sort segment timings by index to maintain order
+    segment_timings.sort(key=lambda x: x["index"])
+    
+    print(f"[TTS] Generated podcast with {len(segment_timings)} segments, total duration: {total_duration:.2f}s")
+    for timing in segment_timings:
+        print(f"[TTS] Segment {timing['index']}: {timing['start_time']:.2f}s - {timing['end_time']:.2f}s ({timing['speaker']})")
+
+    return str(filepath), total_duration, segment_timings
 
 def _apply_audio_post_processing(audio: AudioSegment) -> AudioSegment:
     """

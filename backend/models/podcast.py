@@ -1,11 +1,13 @@
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, text
+from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, text, JSON
 from sqlalchemy.orm import relationship, Session
 from sqlalchemy.exc import OperationalError
 from .database import Base, SessionLocal
+import json
 
 # Global flag to track if created_at column exists
 _created_at_column_exists = None
+_segment_timings_column_exists = None
 
 def _check_created_at_column_exists(db):
     """Check if the created_at column exists in the podcasts table"""
@@ -22,6 +24,21 @@ def _check_created_at_column_exists(db):
                 raise
     return _created_at_column_exists
 
+def _check_segment_timings_column_exists(db):
+    """Check if the segment_timings column exists in the podcasts table"""
+    global _segment_timings_column_exists
+    if _segment_timings_column_exists is None:
+        try:
+            # Try a simple query that would fail if segment_timings doesn't exist
+            db.execute(text("SELECT segment_timings FROM podcasts LIMIT 1")).fetchone()
+            _segment_timings_column_exists = True
+        except OperationalError as e:
+            if "no such column" in str(e).lower() and "segment_timings" in str(e).lower():
+                _segment_timings_column_exists = False
+            else:
+                raise
+    return _segment_timings_column_exists
+
 class Podcast(Base):
     __tablename__ = "podcasts"
     id = Column(Integer, primary_key=True, index=True)
@@ -33,34 +50,52 @@ class Podcast(Base):
     script_text = Column(Text, nullable=True)
     duration = Column(Integer, nullable=True)
     created_at = Column(DateTime, nullable=True)
+    segment_timings = Column(Text, nullable=True)  # JSON string of timing data
     
     # Relationships
     project = relationship("Project", back_populates="podcasts")
     # episodes = relationship("Episode", back_populates="podcast")
 
 
-def create_podcast(project_id: int, document_id: int, title: str, script_text: str, audio_filename: str, duration: float = None):
+def create_podcast(project_id: int, document_id: int, title: str, script_text: str, audio_filename: str, duration: float = None, segment_timings: list = None):
     """Create a new podcast for a project"""
     db = SessionLocal()
     try:
+        # Serialize segment timings to JSON string
+        segment_timings_json = json.dumps(segment_timings) if segment_timings else None
+        
         # Check if created_at column exists
         if _check_created_at_column_exists(db):
-            # Use ORM if column exists
-            pod = Podcast(
-                project_id=project_id,
-                document_id=document_id,
-                title=title,
-                script_text=script_text,
-                audio_filename=audio_filename,
-                duration=duration,
-                created_at=datetime.utcnow()
-            )
+            # Check if segment_timings column exists
+            if _check_segment_timings_column_exists(db):
+                # Use ORM with all columns
+                pod = Podcast(
+                    project_id=project_id,
+                    document_id=document_id,
+                    title=title,
+                    script_text=script_text,
+                    audio_filename=audio_filename,
+                    duration=duration,
+                    created_at=datetime.utcnow(),
+                    segment_timings=segment_timings_json
+                )
+            else:
+                # Use ORM without segment_timings column
+                pod = Podcast(
+                    project_id=project_id,
+                    document_id=document_id,
+                    title=title,
+                    script_text=script_text,
+                    audio_filename=audio_filename,
+                    duration=duration,
+                    created_at=datetime.utcnow()
+                )
             db.add(pod)
             db.commit()
             db.refresh(pod)
             return pod
         else:
-            # Use raw SQL if column doesn't exist
+            # Use raw SQL if created_at column doesn't exist
             # Ensure document_id is not None
             if document_id is None:
                 print(f"Warning: document_id is None, this should not happen")
@@ -75,6 +110,10 @@ def create_podcast(project_id: int, document_id: int, title: str, script_text: s
                 "duration": duration
             }
             
+            # Add segment_timings if column exists
+            if _check_segment_timings_column_exists(db):
+                data["segment_timings"] = segment_timings_json
+            
             # Filter out None values to avoid SQL issues
             filtered_data = {k: v for k, v in data.items() if v is not None}
             
@@ -87,8 +126,12 @@ def create_podcast(project_id: int, document_id: int, title: str, script_text: s
             db.commit()
             result = db.execute(text("SELECT last_insert_rowid()")).fetchone()
             last_id = result[0]
+            
             # Return raw data instead of trying to load ORM object
-            raw_pod_data = db.execute(text("SELECT id, title, description, audio_filename, project_id, document_id, script_text, duration FROM podcasts WHERE id = :id"), {"id": last_id}).fetchone()
+            if _check_segment_timings_column_exists(db):
+                raw_pod_data = db.execute(text("SELECT id, title, description, audio_filename, project_id, document_id, script_text, duration, segment_timings FROM podcasts WHERE id = :id"), {"id": last_id}).fetchone()
+            else:
+                raw_pod_data = db.execute(text("SELECT id, title, description, audio_filename, project_id, document_id, script_text, duration FROM podcasts WHERE id = :id"), {"id": last_id}).fetchone()
             return raw_pod_data
     except Exception as e:
         db.rollback()
@@ -146,7 +189,10 @@ def get_podcast_by_id(podcast_id: int):
             return db.query(Podcast).filter(Podcast.id == podcast_id).first()
         else:
             # Use raw SQL if column doesn't exist
-            stmt = text("SELECT id, title, description, audio_filename, project_id, document_id, script_text, duration FROM podcasts WHERE id = :podcast_id")
+            if _check_segment_timings_column_exists(db):
+                stmt = text("SELECT id, title, description, audio_filename, project_id, document_id, script_text, duration, segment_timings FROM podcasts WHERE id = :podcast_id")
+            else:
+                stmt = text("SELECT id, title, description, audio_filename, project_id, document_id, script_text, duration FROM podcasts WHERE id = :podcast_id")
             result = db.execute(stmt, {"podcast_id": podcast_id}).fetchone()
             return result
     finally:
