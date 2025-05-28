@@ -35,6 +35,8 @@ export default function Workspace(){
   // Add script state
   const [podcastScript, setPodcastScript] = useState('');
   const [loadingScript, setLoadingScript] = useState(false);
+  const [scriptSegments, setScriptSegments] = useState([]);
+  const [currentSegmentIndex, setCurrentSegmentIndex] = useState(-1);
 
   const api = axios.create({
     baseURL: 'https://api.infinia.chat',
@@ -177,6 +179,9 @@ export default function Workspace(){
       setSelected(null);
       setSelectedDoc(null);
       setAudio('');
+      setPodcastScript('');
+      setScriptSegments([]);
+      setCurrentSegmentIndex(-1);
       setShowProjectSelection(false);
       setActiveTab('sources');
       
@@ -207,6 +212,8 @@ export default function Workspace(){
       setAudio('');
       setPodcastScript('');
       setLoadingScript(false);
+      setScriptSegments([]);
+      setCurrentSegmentIndex(-1);
     } catch (error) {
       console.error('Error checking project podcast status:', error);
       // Fallback to using the project as-is
@@ -222,6 +229,9 @@ export default function Workspace(){
     setSelected(null);
     setSelectedDoc(null);
     setAudio('');
+    setPodcastScript('');
+    setScriptSegments([]);
+    setCurrentSegmentIndex(-1);
     fetchProjects(); // Refresh projects list
   };
 
@@ -270,6 +280,9 @@ export default function Workspace(){
       setSelected(null);
       setSelectedDoc(null);
       setAudio('');
+      setPodcastScript('');
+      setScriptSegments([]);
+      setCurrentSegmentIndex(-1);
       
       console.log(`Successfully deleted project "${currentProject.name}" and all associated files`);
       
@@ -386,6 +399,9 @@ export default function Workspace(){
     const handler = e => {
       setSelected(e.detail);
       setAudio('');
+      setPodcastScript('');
+      setScriptSegments([]);
+      setCurrentSegmentIndex(-1);
       setIsPlaying(false);
       setCurrentTime(0);
       setDuration(0);
@@ -397,9 +413,15 @@ export default function Workspace(){
   // Audio event handlers
   useEffect(() => {
     if (audioRef) {
-      const updateTime = () => setCurrentTime(audioRef.currentTime);
+      const updateTime = () => {
+        setCurrentTime(audioRef.currentTime);
+        updateCurrentSegment(audioRef.currentTime);
+      };
       const updateDuration = () => setDuration(audioRef.duration);
-      const handleEnded = () => setIsPlaying(false);
+      const handleEnded = () => {
+        setIsPlaying(false);
+        setCurrentSegmentIndex(-1);
+      };
 
       audioRef.addEventListener('timeupdate', updateTime);
       audioRef.addEventListener('loadedmetadata', updateDuration);
@@ -411,7 +433,40 @@ export default function Workspace(){
         audioRef.removeEventListener('ended', handleEnded);
       };
     }
-  }, [audioRef]);
+  }, [audioRef, scriptSegments]);
+
+  // Function to update current segment based on audio time
+  const updateCurrentSegment = (currentTime) => {
+    if (scriptSegments.length === 0) return;
+    
+    const segmentIndex = scriptSegments.findIndex(segment => 
+      currentTime >= segment.startTime && currentTime < segment.endTime
+    );
+    
+    if (segmentIndex !== -1 && segmentIndex !== currentSegmentIndex) {
+      setCurrentSegmentIndex(segmentIndex);
+      
+      // Auto-scroll to current segment
+      const segmentElement = document.querySelector(`[data-segment-index="${segmentIndex}"]`);
+      if (segmentElement) {
+        segmentElement.scrollIntoView({ 
+          behavior: 'smooth', 
+          block: 'center' 
+        });
+      }
+    }
+  };
+
+  // Function to handle clicking on script segments to jump to that time
+  const handleSegmentClick = (segmentIndex) => {
+    if (!audioRef || scriptSegments.length === 0) return;
+    
+    const segment = scriptSegments[segmentIndex];
+    if (segment) {
+      audioRef.currentTime = segment.startTime;
+      setCurrentSegmentIndex(segmentIndex);
+    }
+  };
 
   const togglePlayPause = () => {
     if (audioRef) {
@@ -643,12 +698,81 @@ export default function Workspace(){
     setLoadingScript(true);
     try {
       const response = await api.get(`/generate/${podcastId}/script`);
-      setPodcastScript(response.data.script || '');
+      const script = response.data.script || '';
+      setPodcastScript(script);
+      
+      // Parse script into timed segments
+      if (script) {
+        parseScriptSegments(script);
+      }
     } catch (error) {
       console.error('Error fetching podcast script:', error);
       setPodcastScript('');
+      setScriptSegments([]);
     }
     setLoadingScript(false);
+  };
+
+  // Function to parse script into timed segments
+  const parseScriptSegments = (script) => {
+    const lines = script.split('\n').filter(line => line.trim());
+    const segments = [];
+    let currentTime = 0;
+    
+    // Average speaking rate: ~150 words per minute = 2.5 words per second
+    // Add pauses between speakers and for punctuation
+    const wordsPerSecond = 2.2;
+    const pauseBetweenSpeakers = 0.8; // seconds
+    const pauseForPunctuation = 0.3; // seconds for periods, commas, etc.
+    
+    lines.forEach((line, index) => {
+      const trimmedLine = line.trim();
+      if (!trimmedLine) return;
+      
+      const startTime = currentTime;
+      
+      // Count words in the line
+      let text = trimmedLine;
+      if (trimmedLine.startsWith('Host A:') || trimmedLine.startsWith('Host B:')) {
+        text = trimmedLine.substring(7).trim();
+      }
+      
+      const wordCount = text.split(/\s+/).length;
+      const baseDuration = wordCount / wordsPerSecond;
+      
+      // Add extra time for punctuation
+      const punctuationCount = (text.match(/[.!?]/g) || []).length;
+      const commaCount = (text.match(/[,;:]/g) || []).length;
+      const punctuationTime = punctuationCount * pauseForPunctuation + commaCount * (pauseForPunctuation / 2);
+      
+      const duration = baseDuration + punctuationTime;
+      
+      segments.push({
+        index,
+        text: trimmedLine,
+        startTime,
+        endTime: currentTime + duration,
+        duration
+      });
+      
+      currentTime += duration;
+      
+      // Add pause between different speakers
+      const nextLine = lines[index + 1];
+      if (nextLine) {
+        const currentSpeaker = trimmedLine.startsWith('Host A:') ? 'A' : 
+                              trimmedLine.startsWith('Host B:') ? 'B' : null;
+        const nextSpeaker = nextLine.startsWith('Host A:') ? 'A' : 
+                           nextLine.startsWith('Host B:') ? 'B' : null;
+        
+        if (currentSpeaker && nextSpeaker && currentSpeaker !== nextSpeaker) {
+          currentTime += pauseBetweenSpeakers;
+        }
+      }
+    });
+    
+    setScriptSegments(segments);
+    console.log('Parsed script segments:', segments);
   };
 
   const renderTabContent = () => {
@@ -905,31 +1029,83 @@ export default function Workspace(){
                     </div>
                   ) : podcastScript ? (
                     <div className="script-text">
-                      {podcastScript.split('\n').map((line, index) => {
-                        const trimmedLine = line.trim();
-                        if (trimmedLine.startsWith('Host A:')) {
-                          return (
-                            <div key={index} className="script-line script-line-host-a">
-                              <span className="script-speaker">Host A:</span>
-                              <span className="script-dialogue">{trimmedLine.substring(7).trim()}</span>
-                            </div>
-                          );
-                        } else if (trimmedLine.startsWith('Host B:')) {
-                          return (
-                            <div key={index} className="script-line script-line-host-b">
-                              <span className="script-speaker">Host B:</span>
-                              <span className="script-dialogue">{trimmedLine.substring(7).trim()}</span>
-                            </div>
-                          );
-                        } else if (trimmedLine) {
-                          return (
-                            <div key={index} className="script-line script-line-narrative">
-                              {trimmedLine}
-                            </div>
-                          );
-                        }
-                        return null;
-                      })}
+                      {scriptSegments.length > 0 ? (
+                        scriptSegments.map((segment, index) => {
+                          const trimmedLine = segment.text.trim();
+                          const isCurrentSegment = index === currentSegmentIndex;
+                          
+                          if (trimmedLine.startsWith('Host A:')) {
+                            return (
+                              <div 
+                                key={index} 
+                                data-segment-index={index}
+                                className={`script-line script-line-host-a ${isCurrentSegment ? 'script-line-current' : ''} ${audio ? 'script-line-clickable' : ''}`}
+                                onClick={() => audio && handleSegmentClick(index)}
+                                title={audio ? `Jump to ${Math.floor(segment.startTime / 60)}:${Math.floor(segment.startTime % 60).toString().padStart(2, '0')}` : ''}
+                              >
+                                <span className="script-speaker">Host A:</span>
+                                <span className="script-dialogue">{trimmedLine.substring(7).trim()}</span>
+                                {isCurrentSegment && <div className="script-progress-indicator"></div>}
+                              </div>
+                            );
+                          } else if (trimmedLine.startsWith('Host B:')) {
+                            return (
+                              <div 
+                                key={index} 
+                                data-segment-index={index}
+                                className={`script-line script-line-host-b ${isCurrentSegment ? 'script-line-current' : ''} ${audio ? 'script-line-clickable' : ''}`}
+                                onClick={() => audio && handleSegmentClick(index)}
+                                title={audio ? `Jump to ${Math.floor(segment.startTime / 60)}:${Math.floor(segment.startTime % 60).toString().padStart(2, '0')}` : ''}
+                              >
+                                <span className="script-speaker">Host B:</span>
+                                <span className="script-dialogue">{trimmedLine.substring(7).trim()}</span>
+                                {isCurrentSegment && <div className="script-progress-indicator"></div>}
+                              </div>
+                            );
+                          } else if (trimmedLine) {
+                            return (
+                              <div 
+                                key={index} 
+                                data-segment-index={index}
+                                className={`script-line script-line-narrative ${isCurrentSegment ? 'script-line-current' : ''} ${audio ? 'script-line-clickable' : ''}`}
+                                onClick={() => audio && handleSegmentClick(index)}
+                                title={audio ? `Jump to ${Math.floor(segment.startTime / 60)}:${Math.floor(segment.startTime % 60).toString().padStart(2, '0')}` : ''}
+                              >
+                                {trimmedLine}
+                                {isCurrentSegment && <div className="script-progress-indicator"></div>}
+                              </div>
+                            );
+                          }
+                          return null;
+                        })
+                      ) : (
+                        // Fallback to original parsing if segments aren't available
+                        podcastScript.split('\n').map((line, index) => {
+                          const trimmedLine = line.trim();
+                          if (trimmedLine.startsWith('Host A:')) {
+                            return (
+                              <div key={index} className="script-line script-line-host-a">
+                                <span className="script-speaker">Host A:</span>
+                                <span className="script-dialogue">{trimmedLine.substring(7).trim()}</span>
+                              </div>
+                            );
+                          } else if (trimmedLine.startsWith('Host B:')) {
+                            return (
+                              <div key={index} className="script-line script-line-host-b">
+                                <span className="script-speaker">Host B:</span>
+                                <span className="script-dialogue">{trimmedLine.substring(7).trim()}</span>
+                              </div>
+                            );
+                          } else if (trimmedLine) {
+                            return (
+                              <div key={index} className="script-line script-line-narrative">
+                                {trimmedLine}
+                              </div>
+                            );
+                          }
+                          return null;
+                        })
+                      )}
                     </div>
                   ) : (
                     <div className="script-empty">

@@ -1503,4 +1503,104 @@
   color: #6b7280;
   font-weight: 500;
   line-height: 1.5;
+}
+
+/* Script Highlighting Styles */
+.script-line-current {
+  background: linear-gradient(135deg, #fef3c7 0%, #fde047 100%) !important;
+  border-left-color: #f59e0b !important;
+  border-left-width: 6px !important;
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
+  transform: scale(1.02);
+  transition: all 0.3s ease;
+  position: relative;
+  animation: currentSegmentPulse 2s ease-in-out infinite;
+}
+
+.script-line-current.script-line-host-a {
+  background: linear-gradient(135deg, #fef3c7 0%, #fde047 100%) !important;
+  border-left-color: #f59e0b !important;
+}
+
+.script-line-current.script-line-host-b {
+  background: linear-gradient(135deg, #dbeafe 0%, #60a5fa 100%) !important;
+  border-left-color: #2563eb !important;
+}
+
+.script-line-current.script-line-narrative {
+  background: linear-gradient(135deg, #e5e7eb 0%, #d1d5db 100%) !important;
+  border-left-color: #374151 !important;
+}
+
+@keyframes currentSegmentPulse {
+  0%, 100% {
+    box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
+  }
+  50% {
+    box-shadow: 0 6px 20px rgba(245, 158, 11, 0.5);
+  }
+}
+
+.script-progress-indicator {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 4px;
+  background: linear-gradient(180deg, #f59e0b 0%, #d97706 100%);
+  border-radius: 0 12px 12px 0;
+  animation: progressIndicatorGlow 1.5s ease-in-out infinite;
+}
+
+.script-line-current.script-line-host-b .script-progress-indicator {
+  background: linear-gradient(180deg, #2563eb 0%, #1d4ed8 100%);
+}
+
+.script-line-current.script-line-narrative .script-progress-indicator {
+  background: linear-gradient(180deg, #374151 0%, #1f2937 100%);
+}
+
+@keyframes progressIndicatorGlow {
+  0%, 100% {
+    opacity: 0.8;
+  }
+  50% {
+    opacity: 1;
+    box-shadow: 0 0 8px rgba(245, 158, 11, 0.6);
+  }
+}
+
+/* Smooth scroll behavior for script content */
+.script-content {
+  scroll-behavior: smooth;
+}
+
+/* Clickable Script Lines */
+.script-line-clickable {
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.script-line-clickable:hover {
+  transform: translateX(4px);
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.15);
+}
+
+.script-line-clickable:hover.script-line-host-a {
+  border-left-color: #f59e0b;
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+}
+
+.script-line-clickable:hover.script-line-host-b {
+  border-left-color: #2563eb;
+  background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+}
+
+.script-line-clickable:hover.script-line-narrative {
+  border-left-color: #374151;
+  background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);
+}
+
+.script-line-clickable:active {
+  transform: translateX(2px);
 } 
