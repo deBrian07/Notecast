@@ -151,7 +151,7 @@ export default function Workspace(){
       // Create project on backend
       const response = await api.post('/projects', {
         name: projectName,
-        description: null
+        description: ""  // Send empty string instead of null
       });
       
       const newProject = {
@@ -179,6 +179,7 @@ export default function Workspace(){
       console.log(`Successfully created new project: ${newProject.name}`);
     } catch (error) {
       console.error('Error creating project:', error);
+      console.error('Error response:', error.response?.data);
       alert('There was an error creating the project. Please try again.');
     }
   };
