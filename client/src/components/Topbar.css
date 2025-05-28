@@ -17,25 +17,29 @@
 }
 
 .topbar-logo {
-  width: 36px;
-  height: 36px;
-  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+  width: 54px;
+  height: 54px;
+  background: transparent;
   border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
   transition: transform 0.2s ease;
+  overflow: hidden;
 }
 
 .topbar-logo:hover {
   transform: scale(1.05);
 }
 
+.topbar-logo-image {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
 .topbar-logo span {
-  color: white;
-  font-weight: 700;
-  font-size: 16px;
+  display: none;
 }
 
 .topbar-title {

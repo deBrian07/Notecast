@@ -70,8 +70,7 @@ export default function Login() {
       {/* Header */}
       <div className="login-header">
         <div className="login-logo">
-          <div className="login-logo-icon">N</div>
-          <span className="login-logo-text">Notecast</span>
+          <img src="/logo2.png" alt="Notecast" className="login-logo-image" />
         </div>
       </div>
 
