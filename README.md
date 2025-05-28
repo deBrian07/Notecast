@@ -1,6 +1,9 @@
 # Notecast
 
 A modern application for converting documents into podcasts using AI-powered text-to-speech technology.
+<div align="center">
+<img src="https://github.com/user-attachments/assets/57bcc57d-5331-47a1-8ec9-1aeea4788c05" alt="Alt Text" style="width:45%; height:auto;">
+</div>
 
 ## 🚀 Quick Start
 
