@@ -31,7 +31,7 @@ def generate_podcast_script(summary: str, model: str | None = None) -> str:
         "You are a professional podcast host and you are writing a script for a podcast. "
         "Create a dialogue between two hosts: Host A (female) and Host B (male). "
         "The conversation should thoroughly cover the content of the provided summary (make sure to include all the details)"
-        "and last at least ten minutes when read aloud. "
+        "and last at least fifteen minutes when read aloud. "
         "Do not use any special symbols or punctuation characters such as #, *, @, $, %, etc. "
         "Use only plain, natural language. "
         "Remember that a human will read every single word aloud, so ensure the script flows "

@@ -469,13 +469,14 @@ def synthesize_podcast_audio(user_id: int, doc_id: int, script: str) -> Tuple[st
     if not segments:
         raise ValueError("No text segments found to synthesize")
 
-    # Dispatch synthesis in parallel across 2 GPUs using VITS
+    # Dispatch synthesis using single GPU to ensure consistent voices
     audio_chunks: List[AudioSegment] = []
     with ThreadPoolExecutor(max_workers=2) as executor:
         futures = []
         for i, (speaker, text) in enumerate(segments):
             preset = settings.tts_voice_female if speaker == "female" else settings.tts_voice_male
-            device_str = f"cuda:{i % 2}"
+            device_str = "cuda:0"  # Use same GPU for all synthesis to ensure consistent voices
+            print(f"[TTS] Segment {i}: {speaker} speaker using preset '{preset}' on {device_str}")
             # Use VITS for better naturalness
             futures.append(executor.submit(_synthesize_line_vits, preset, text, device_str))
         
