@@ -32,4 +32,4 @@ yarn-error.log*
 __pycache__/
 *.py[cod]
 
-/backend/voice_samples
+/backend/speaker_samples
