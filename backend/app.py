@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from routers import auth, documents, generate as generate_router
+from routers import auth, documents, generate as generate_router, projects
 from routers.tts import router as tts_router
 import uvicorn
 
@@ -34,6 +34,7 @@ async def root():
 
 # Include routers
 app.include_router(auth.router)
+app.include_router(projects.router)          # New projects router
 app.include_router(documents.router)          # router already has prefix
 app.include_router(generate_router.router)
 app.include_router(tts_router)

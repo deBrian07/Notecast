@@ -20,6 +20,9 @@ export default function Workspace(){
   const [projects, setProjects] = useState([]);
   const [showProjectSelection, setShowProjectSelection] = useState(true);
   
+  // Project-podcast mapping stored in localStorage
+  const [projectPodcastMap, setProjectPodcastMap] = useState({});
+  
   // Dropdown menu state
   const [showDropdown, setShowDropdown] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -33,6 +36,38 @@ export default function Workspace(){
     baseURL: 'https://api.infinia.chat',
     headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
   });
+
+  // Load project-podcast mapping from localStorage
+  useEffect(() => {
+    const storedMapping = localStorage.getItem('notecast_project_podcast_map');
+    if (storedMapping) {
+      setProjectPodcastMap(JSON.parse(storedMapping));
+    }
+  }, []);
+
+  // Save project-podcast mapping to localStorage
+  const saveProjectPodcastMap = (mapping) => {
+    localStorage.setItem('notecast_project_podcast_map', JSON.stringify(mapping));
+    setProjectPodcastMap(mapping);
+  };
+
+  // Get podcast ID for a project
+  const getProjectPodcastId = (projectId) => {
+    return projectPodcastMap[projectId] || null;
+  };
+
+  // Set podcast ID for a project
+  const setProjectPodcastId = (projectId, podcastId) => {
+    const newMapping = { ...projectPodcastMap, [projectId]: podcastId };
+    saveProjectPodcastMap(newMapping);
+  };
+
+  // Remove podcast mapping for a project
+  const removeProjectPodcastId = (projectId) => {
+    const newMapping = { ...projectPodcastMap };
+    delete newMapping[projectId];
+    saveProjectPodcastMap(newMapping);
+  };
 
   // Fetch projects on component mount
   useEffect(() => {
@@ -48,30 +83,49 @@ export default function Workspace(){
 
   const fetchProjects = async () => {
     try {
-      // Get projects from localStorage (proper project management)
-      const storedProjects = localStorage.getItem('notecast_projects');
-      let projects = storedProjects ? JSON.parse(storedProjects) : [];
+      const response = await api.get('/projects');
+      const backendProjects = response.data;
       
-      // For each project, check if it has associated podcasts
-      const response = await api.get('/generate');
-      const podcasts = response.data;
+      // Convert backend projects to frontend format and add podcast status
+      const projectsWithPodcastStatus = await Promise.all(
+        backendProjects.map(async (project) => {
+          const podcastId = getProjectPodcastId(project.id);
+          let hasPodcast = false;
+          
+          if (podcastId) {
+            try {
+              const podcastResponse = await api.get('/generate');
+              const allPodcasts = podcastResponse.data;
+              hasPodcast = allPodcasts.some(p => p.id === podcastId && p.audio_filename);
+            } catch (error) {
+              console.error('Error checking podcast status:', error);
+            }
+          }
+          
+          return {
+            id: project.id,
+            name: project.name,
+            description: project.description,
+            created_at: project.created_at,
+            document_count: project.document_count,
+            has_podcast: hasPodcast
+          };
+        })
+      );
       
-      projects = projects.map(project => {
-        const projectPodcasts = podcasts.filter(p => 
-          p.document_id === project.id || 
-          (project.id.startsWith('new_') && p.title && p.title.includes(project.name))
-        );
-        
-        return {
-          ...project,
-          has_podcast: projectPodcasts.some(p => p.audio_filename)
-        };
-      });
+      setProjects(projectsWithPodcastStatus);
       
-      setProjects(projects);
+      // Also save to localStorage as backup
+      saveProjectsToStorage(projectsWithPodcastStatus);
     } catch (error) {
       console.error('Error fetching projects:', error);
-      setProjects([]);
+      // Fallback to localStorage if backend fails
+      const storedProjects = localStorage.getItem('notecast_projects');
+      if (storedProjects) {
+        setProjects(JSON.parse(storedProjects));
+      } else {
+        setProjects([]);
+      }
     }
   };
 
@@ -81,9 +135,8 @@ export default function Workspace(){
 
   const fetchProjectDocuments = async (projectId) => {
     try {
-      const response = await api.get('/documents');
-      // Filter documents by project (for now, we'll use all documents)
-      // In a real implementation, documents would be associated with projects
+      // Use the project-specific documents endpoint
+      const response = await api.get(`/documents/project/${projectId}`);
       setDocs(response.data);
     } catch (error) {
       console.error('Error fetching project documents:', error);
@@ -91,34 +144,67 @@ export default function Workspace(){
     }
   };
 
-  const createNewProject = () => {
-    const newProject = {
-      id: `new_${Date.now()}`,
-      name: `New Project ${new Date().toLocaleDateString()}`,
-      created_at: new Date().toISOString(),
-      document_count: 0,
-      has_podcast: false
-    };
-    
-    // Save to localStorage
-    const currentProjects = projects;
-    const updatedProjects = [...currentProjects, newProject];
-    saveProjectsToStorage(updatedProjects);
-    setProjects(updatedProjects);
-    
-    setCurrentProject(newProject);
-    setDocs([]);
-    setSelected(null);
-    setSelectedDoc(null);
-    setAudio('');
-    setShowProjectSelection(false);
-    setActiveTab('sources');
+  const createNewProject = async () => {
+    try {
+      const projectName = `New Project ${new Date().toLocaleDateString()}`;
+      
+      // Create project on backend
+      const response = await api.post('/projects', {
+        name: projectName,
+        description: ""  // Send empty string instead of null
+      });
+      
+      const newProject = {
+        id: response.data.id,
+        name: response.data.name,
+        description: response.data.description,
+        created_at: response.data.created_at,
+        document_count: 0,
+        has_podcast: false
+      };
+      
+      // Update local state
+      const updatedProjects = [...projects, newProject];
+      setProjects(updatedProjects);
+      saveProjectsToStorage(updatedProjects);
+      
+      setCurrentProject(newProject);
+      setDocs([]);
+      setSelected(null);
+      setSelectedDoc(null);
+      setAudio('');
+      setShowProjectSelection(false);
+      setActiveTab('sources');
+      
+      console.log(`Successfully created new project: ${newProject.name}`);
+    } catch (error) {
+      console.error('Error creating project:', error);
+      console.error('Error response:', error.response?.data);
+      alert('There was an error creating the project. Please try again.');
+    }
   };
 
-  const selectProject = (project) => {
-    setCurrentProject(project);
-    setShowProjectSelection(false);
-    setActiveTab('sources');
+  const selectProject = async (project) => {
+    // Refresh the project's podcast status before setting it as current
+    try {
+      const response = await api.get('/generate');
+      const allPodcasts = response.data;
+      
+      const podcastId = getProjectPodcastId(project.id);
+      const hasPodcast = podcastId && allPodcasts.some(p => p.id === podcastId && p.audio_filename);
+      
+      const updatedProject = { ...project, has_podcast: hasPodcast };
+      
+      setCurrentProject(updatedProject);
+      setShowProjectSelection(false);
+      setActiveTab('sources');
+    } catch (error) {
+      console.error('Error checking project podcast status:', error);
+      // Fallback to using the project as-is
+      setCurrentProject(project);
+      setShowProjectSelection(false);
+      setActiveTab('sources');
+    }
   };
 
   const backToProjects = () => {
@@ -143,48 +229,28 @@ export default function Workspace(){
     setShowDropdown(false);
     
     try {
-      // First, get all podcasts associated with this project to delete their audio files
-      const podcasts = await api.get('/generate');
-      const projectPodcasts = podcasts.data.filter(p => 
-        p.document_id === currentProject.id || 
-        (currentProject.id.startsWith('new_') && p.title && p.title.includes(currentProject.name))
-      );
+      // Get the podcast ID for this project
+      const podcastId = getProjectPodcastId(currentProject.id);
       
-      // Delete audio files first (before deleting database entries)
-      for (const podcast of projectPodcasts) {
-        if (podcast.audio_filename) {
-          try {
-            // Delete the entire podcast (this will delete both the audio file and database entry)
-            await api.delete(`/generate/${podcast.id}`);
-            console.log(`Deleted podcast and audio file for podcast ${podcast.id}`);
-          } catch (error) {
-            console.error(`Error deleting podcast ${podcast.id}:`, error);
-            // Continue with deletion even if podcast deletion fails
-          }
-        }
-      }
-      
-      // Delete all documents in the project
-      for (const doc of docs) {
+      if (podcastId) {
         try {
-          // Delete the actual document file from server storage (data/uploads)
-          await api.delete(`/documents/${doc.id}/file`);
-          console.log(`Deleted document file for ${doc.id}`);
+          // Delete the podcast (this will delete both the audio file and database entry)
+          await api.delete(`/generate/${podcastId}`);
+          console.log(`Deleted podcast ${podcastId} for project ${currentProject.name}`);
         } catch (error) {
-          console.error(`Error deleting document file for ${doc.id}:`, error);
-          // Continue with deletion even if file deletion fails
+          console.error(`Error deleting podcast ${podcastId}:`, error);
+          // Continue with deletion even if podcast deletion fails
         }
         
-        try {
-          // Delete the document database entry
-          await api.delete(`/documents/${doc.id}`);
-          console.log(`Deleted document database entry ${doc.id}`);
-        } catch (error) {
-          console.error(`Error deleting document database entry ${doc.id}:`, error);
-        }
+        // Remove the podcast mapping for this project
+        removeProjectPodcastId(currentProject.id);
       }
       
-      // Remove project from localStorage
+      // Delete the project using backend API (this will cascade delete documents and podcasts)
+      await api.delete(`/projects/${currentProject.id}`);
+      console.log(`Deleted project ${currentProject.name} from backend`);
+      
+      // Remove project from local state
       const updatedProjects = projects.filter(p => p.id !== currentProject.id);
       saveProjectsToStorage(updatedProjects);
       setProjects(updatedProjects);
@@ -214,14 +280,23 @@ export default function Workspace(){
     setShowDropdown(false);
   };
 
-  const handleRenameSubmit = () => {
+  const handleRenameSubmit = async () => {
     if (!currentProject || !renameValue.trim() || isRenaming) return;
     
     setIsRenaming(true);
     
     try {
-      // Update the project name
-      const updatedProject = { ...currentProject, name: renameValue.trim() };
+      // Update the project name on backend
+      const response = await api.put(`/projects/${currentProject.id}`, {
+        name: renameValue.trim(),
+        description: currentProject.description
+      });
+      
+      const updatedProject = {
+        ...currentProject,
+        name: response.data.name,
+        description: response.data.description
+      };
       
       // Update in projects list
       const updatedProjects = projects.map(p => 
@@ -275,11 +350,26 @@ export default function Workspace(){
     const file = e.target.files[0]; 
     if (!file) return;
     
-    const form = new FormData(); 
-    form.append('file', file);
-    await api.post('/documents/upload', form);
-    const updatedDocs = (await api.get('/documents')).data;
-    setDocs(updatedDocs);
+    if (!currentProject) {
+      alert('Please select a project first before uploading documents.');
+      return;
+    }
+    
+    try {
+      const form = new FormData(); 
+      form.append('file', file);
+      
+      // Use the project-specific upload endpoint
+      await api.post(`/documents/upload/${currentProject.id}`, form);
+      
+      // Refresh the documents list for this project
+      await fetchProjectDocuments(currentProject.id);
+      
+      console.log(`Successfully uploaded ${file.name} to project ${currentProject.name}`);
+    } catch (error) {
+      console.error('Error uploading file:', error);
+      alert('There was an error uploading the file. Please try again.');
+    }
   };
 
   // Listen for "select-doc" custom event dispatched by Sidebar
@@ -339,105 +429,193 @@ export default function Workspace(){
     }
   };
 
-  async function generate() {
-    if (!selected) return;
+  async function generateNewPodcast() {
+    if (!currentProject) return;
     setLoading(true);
 
-    // Kick off background generation
-    await api.post(`/generate/${selected.id}`);
-
-    // Poll every 3s for completion
-    let pod = null;
-    while (!pod) {
-      await new Promise(r => setTimeout(r, 3000));
-      const list = (await api.get('/generate')).data;
-      
-      // Debug: log the podcast list
-      console.log('Polling for podcasts, found:', list.length);
-      console.log('Looking for document_id:', selected.id);
-      console.log('Available podcasts:', list.map(p => ({ id: p.id, document_id: p.document_id, audio_filename: p.audio_filename })));
-      
-      // Find podcasts with matching document_id and audio_filename, prioritize most recent
-      const matchingPods = list
-        .filter(p => p.document_id === selected.id && p.audio_filename)
-        .sort((a, b) => b.id - a.id); // Sort by ID descending (most recent first)
-      
-      if (matchingPods.length > 0) {
-        pod = matchingPods[0]; // Use the most recent matching podcast
-        console.log('Found exact match (most recent):', pod);
-      } else {
-        // Fallback: try to find by title match (for cases where document_id is None)
-        const recentPods = list
-          .filter(p => p.audio_filename) // Has audio
-          .sort((a, b) => b.id - a.id); // Sort by ID descending (most recent first)
-        
-        if (recentPods.length > 0) {
-          console.log('No exact match found, checking if most recent podcast might be ours...');
-          console.log('Most recent podcast:', recentPods[0]);
-          
-          // If we just started generation and there's a very recent podcast, it might be ours
-          const mostRecent = recentPods[0];
-          if (mostRecent && mostRecent.title && mostRecent.title.includes(selected.orig_filename)) {
-            console.log('Found podcast by title match:', mostRecent);
-            pod = mostRecent;
-          }
+    try {
+      // Delete any existing podcast for this project
+      const existingPodcastId = getProjectPodcastId(currentProject.id);
+      if (existingPodcastId) {
+        try {
+          await api.delete(`/generate/${existingPodcastId}`);
+          console.log(`Deleted existing podcast ${existingPodcastId} for project ${currentProject.name}`);
+          removeProjectPodcastId(currentProject.id);
+        } catch (error) {
+          console.error(`Error deleting existing podcast ${existingPodcastId}:`, error);
         }
       }
+
+      // Generate new podcast using the first document in the project
+      if (docs.length === 0) {
+        alert('Please upload at least one document before generating a podcast.');
+        setLoading(false);
+        return;
+      }
+      
+      const documentId = docs[0].id;
+      await api.post(`/generate/${documentId}`);
+
+      // Poll every 3s for completion
+      let newPodcast = null;
+      while (!newPodcast) {
+        await new Promise(r => setTimeout(r, 3000));
+        const list = (await api.get('/generate')).data;
+        
+        console.log('Polling for new podcast...');
+        
+        // Find the most recent podcast for this document that has audio
+        const matchingPods = list
+          .filter(p => p.document_id === documentId && p.audio_filename)
+          .sort((a, b) => b.id - a.id); // Sort by ID descending (most recent first)
+        
+        if (matchingPods.length > 0) {
+          newPodcast = matchingPods[0];
+          console.log('Found new podcast:', newPodcast);
+        }
+      }
+
+      // Associate the new podcast with this project
+      setProjectPodcastId(currentProject.id, newPodcast.id);
+      
+      // Update project status
+      const updatedProject = { ...currentProject, has_podcast: true };
+      const updatedProjects = projects.map(p => 
+        p.id === currentProject.id ? updatedProject : p
+      );
+      saveProjectsToStorage(updatedProjects);
+      setProjects(updatedProjects);
+      setCurrentProject(updatedProject);
+      
+      console.log(`New podcast generated successfully for project "${currentProject.name}". Use Load button to play it.`);
+      
+    } catch (error) {
+      console.error('Error generating podcast:', error);
+      alert('There was an error generating the podcast. Please try again.');
     }
+    
+    setLoading(false);
+  }
 
-    console.log('Found matching podcast:', pod);
+  async function generate() {
+    if (!currentProject) return;
+    setLoading(true);
 
-    // Fetch final audio blob
-    const res = await api.get(`/generate/${pod.id}/audio`, { responseType: 'blob' });
-    setAudio(URL.createObjectURL(res.data));
+    try {
+      // First, delete any existing podcasts for this project
+      const existingPodcasts = await api.get('/generate');
+      const projectPodcasts = existingPodcasts.data.filter(p => 
+        p.document_id === currentProject.id || 
+        (currentProject.id.startsWith('new_') && p.title && p.title.includes(currentProject.name))
+      );
+      
+      // Delete existing podcasts for this project
+      for (const podcast of projectPodcasts) {
+        try {
+          await api.delete(`/generate/${podcast.id}`);
+          console.log(`Deleted existing podcast ${podcast.id} for project ${currentProject.name}`);
+        } catch (error) {
+          console.error(`Error deleting existing podcast ${podcast.id}:`, error);
+        }
+      }
+
+      // Generate new podcast using the first document in the project or project ID
+      const documentId = docs.length > 0 ? docs[0].id : currentProject.id;
+      await api.post(`/generate/${documentId}`);
+
+      // Poll every 3s for completion
+      let pod = null;
+      while (!pod) {
+        await new Promise(r => setTimeout(r, 3000));
+        const list = (await api.get('/generate')).data;
+        
+        console.log('Polling for new podcast...');
+        
+        // Find the most recent podcast that matches our project
+        const matchingPods = list
+          .filter(p => {
+            // Match by document_id or project association
+            return (p.document_id === documentId) || 
+                   (p.document_id === currentProject.id) ||
+                   (currentProject.id.startsWith('new_') && p.title && p.title.includes(currentProject.name));
+          })
+          .filter(p => p.audio_filename) // Must have audio
+          .sort((a, b) => b.id - a.id); // Sort by ID descending (most recent first)
+        
+        if (matchingPods.length > 0) {
+          pod = matchingPods[0];
+          console.log('Found new podcast:', pod);
+        }
+      }
+
+      // Fetch final audio blob and load it
+      const res = await api.get(`/generate/${pod.id}/audio`, { responseType: 'blob' });
+      setAudio(URL.createObjectURL(res.data));
+      
+      // Update project status
+      const updatedProject = { ...currentProject, has_podcast: true };
+      const updatedProjects = projects.map(p => 
+        p.id === currentProject.id ? updatedProject : p
+      );
+      saveProjectsToStorage(updatedProjects);
+      setProjects(updatedProjects);
+      setCurrentProject(updatedProject);
+      
+    } catch (error) {
+      console.error('Error generating podcast:', error);
+      alert('There was an error generating the podcast. Please try again.');
+    }
+    
     setLoading(false);
   }
 
   async function loadExistingPodcast() {
-    if (!selected) return;
+    if (!currentProject) return;
     setLoading(true);
 
     try {
-      // Get existing podcasts without generating new ones
-      const list = (await api.get('/generate')).data;
+      // Check if this project has a mapped podcast ID
+      const podcastId = getProjectPodcastId(currentProject.id);
       
-      console.log('Looking for existing podcasts for document_id:', selected.id);
-      console.log('Available podcasts:', list.map(p => ({ id: p.id, document_id: p.document_id, audio_filename: p.audio_filename })));
-      
-      // Find podcasts with matching document_id and audio_filename, prioritize most recent
-      const matchingPods = list
-        .filter(p => p.document_id === selected.id && p.audio_filename)
-        .sort((a, b) => b.id - a.id); // Sort by ID descending (most recent first)
-      
-      let pod = null;
-      if (matchingPods.length > 0) {
-        pod = matchingPods[0]; // Use the most recent matching podcast
-        console.log('Found existing podcast:', pod);
-      } else {
-        // Fallback: try to find by title match (for cases where document_id is None)
-        const recentPods = list
-          .filter(p => p.audio_filename) // Has audio
-          .sort((a, b) => b.id - a.id); // Sort by ID descending (most recent first)
-        
-        if (recentPods.length > 0) {
-          const mostRecent = recentPods[0];
-          if (mostRecent && mostRecent.title && mostRecent.title.includes(selected.orig_filename)) {
-            console.log('Found podcast by title match:', mostRecent);
-            pod = mostRecent;
-          }
-        }
+      if (!podcastId) {
+        console.log('No podcast mapping found for this project');
+        alert('No existing podcast found for this project. Please generate a new one.');
+        setLoading(false);
+        return;
       }
 
-      if (pod) {
-        // Fetch existing audio blob
-        const res = await api.get(`/generate/${pod.id}/audio`, { responseType: 'blob' });
-        setAudio(URL.createObjectURL(res.data));
-      } else {
-        console.log('No existing podcast found for this document');
-        // Could show a message to user that no podcast exists yet
+      // Get all podcasts to verify the mapped podcast still exists
+      const list = (await api.get('/generate')).data;
+      const podcast = list.find(p => p.id === podcastId && p.audio_filename);
+      
+      if (!podcast) {
+        console.log('Mapped podcast no longer exists in database');
+        // Remove the invalid mapping
+        removeProjectPodcastId(currentProject.id);
+        
+        // Update project status
+        const updatedProject = { ...currentProject, has_podcast: false };
+        const updatedProjects = projects.map(p => 
+          p.id === currentProject.id ? updatedProject : p
+        );
+        saveProjectsToStorage(updatedProjects);
+        setProjects(updatedProjects);
+        setCurrentProject(updatedProject);
+        
+        alert('No existing podcast found for this project. Please generate a new one.');
+        setLoading(false);
+        return;
       }
+
+      console.log('Found existing podcast for project:', podcast);
+      
+      // Fetch existing audio blob
+      const res = await api.get(`/generate/${podcast.id}/audio`, { responseType: 'blob' });
+      setAudio(URL.createObjectURL(res.data));
+      
     } catch (error) {
       console.error('Error loading existing podcast:', error);
+      alert('There was an error loading the existing podcast. Please try again.');
     }
     
     setLoading(false);
@@ -540,15 +718,18 @@ export default function Workspace(){
                     <div>
                       <h2 className="audio-overview-title">Audio Overview</h2>
                       <p className="audio-overview-subtitle">
-                        {loading ? 'Generating your podcast...' : audio ? 'Your podcast is ready!' : 'Generate an audio overview of your document'}
+                        {loading ? 'Generating your podcast...' : 
+                         audio ? 'Your podcast is ready!' : 
+                         currentProject?.has_podcast ? 'Load your existing podcast or generate a new one for this project.' : 
+                         'Generate a podcast first using the button below'}
                       </p>
                     </div>
-                    {!loading && !audio && (
+                    {!loading && !audio && currentProject?.has_podcast && (
                       <button 
-                        onClick={generate}
+                        onClick={loadExistingPodcast}
                         className="audio-overview-button"
                       >
-                        Generate Podcast
+                        Load Podcast
                       </button>
                     )}
                   </div>
@@ -570,7 +751,7 @@ export default function Workspace(){
                   {audio && !loading && (
                     <div className="audio-player">
                       <div className="audio-player-header">
-                        <h3 className="audio-player-title">{selected?.orig_filename || currentProject?.name}</h3>
+                        <h3 className="audio-player-title">{currentProject?.name}</h3>
                         <div className="audio-player-meta">
                           <span className="audio-player-duration">{formatTime(duration)} • English</span>
                           <button className="workspace-button">
@@ -639,22 +820,26 @@ export default function Workspace(){
                       <p className="audio-empty-text">
                         {docs.length === 0 
                           ? "Add documents to your project first, then generate a podcast." 
-                          : "Click to load or generate a podcast for this project."
+                          : currentProject?.has_podcast 
+                            ? "Load your existing podcast or generate a new one for this project."
+                            : "Generate your first podcast for this project."
                         }
                       </p>
                       {docs.length > 0 && (
                         <div className="audio-empty-actions">
+                          {currentProject?.has_podcast && (
+                            <button 
+                              onClick={loadExistingPodcast}
+                              className="audio-empty-button"
+                            >
+                              Load Existing
+                            </button>
+                          )}
                           <button 
-                            onClick={loadExistingPodcast}
+                            onClick={generateNewPodcast}
                             className="audio-empty-button"
                           >
-                            Load Existing
-                          </button>
-                          <button 
-                            onClick={generate}
-                            className="audio-empty-button"
-                          >
-                            Generate New
+                            {currentProject?.has_podcast ? 'Generate New' : 'Generate Podcast'}
                           </button>
                         </div>
                       )}
