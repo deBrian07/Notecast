@@ -11,7 +11,7 @@ export default function Topbar(){
     <header className="topbar">
       <div className="topbar-brand">
         <div className="topbar-logo">
-          <span>N</span>
+          <img src="/logo2.png" alt="Notecast" className="topbar-logo-image" />
         </div>
         <h1 className="topbar-title">Notecast</h1>
       </div>
