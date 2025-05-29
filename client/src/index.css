@@ -9,7 +9,7 @@
   }
   
   body {
-    @apply font-sans antialiased bg-blue-50;
+    @apply font-sans antialiased bg-blue-50 dark:bg-gray-900 transition-colors duration-300;
   }
   
   #root {
@@ -25,6 +25,10 @@
     scrollbar-color: rgb(147 197 253) transparent;
   }
   
+  .dark .custom-scrollbar {
+    scrollbar-color: rgb(75 85 99) transparent;
+  }
+  
   .custom-scrollbar::-webkit-scrollbar {
     width: 6px;
   }
@@ -34,52 +38,52 @@
   }
   
   .custom-scrollbar::-webkit-scrollbar-thumb {
-    background-color: rgb(147 197 253);
+    @apply bg-blue-300 dark:bg-gray-600;
     border-radius: 3px;
   }
   
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    background-color: rgb(59 130 246);
+    @apply bg-blue-500 dark:bg-gray-500;
   }
 
   /* Audio progress bar */
   .audio-progress {
-    @apply relative w-full h-3 bg-blue-200 rounded-full cursor-pointer;
+    @apply relative w-full h-3 bg-blue-200 dark:bg-gray-700 rounded-full cursor-pointer transition-colors duration-300;
   }
   
   .audio-progress-fill {
-    @apply h-full bg-gradient-to-r from-blue-500 to-blue-600 rounded-full transition-all duration-100 shadow-sm;
+    @apply h-full bg-gradient-to-r from-blue-500 to-blue-600 dark:from-blue-400 dark:to-blue-500 rounded-full transition-all duration-100 shadow-sm;
   }
   
   /* Document card hover effects with light blue theme */
   .document-card {
-    @apply p-4 rounded-xl cursor-pointer transition-all duration-200 mb-3 border-2;
+    @apply p-4 rounded-xl cursor-pointer transition-all duration-200 mb-3 border-2 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700;
   }
   
   .document-card:hover {
-    @apply bg-blue-50/50 border-blue-200 shadow-sm;
+    @apply bg-blue-50/50 dark:bg-gray-700/50 border-blue-200 dark:border-gray-600 shadow-sm;
   }
   
   .document-card.selected {
-    @apply bg-blue-50 border-blue-200 shadow-sm;
+    @apply bg-blue-50 dark:bg-gray-700 border-blue-200 dark:border-blue-600 shadow-sm;
   }
   
   /* Button variants with enhanced light blue theme */
   .btn-primary {
-    @apply bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-medium px-6 py-2.5 rounded-lg transition-all duration-200 shadow-sm;
+    @apply bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 dark:from-blue-600 dark:to-blue-700 dark:hover:from-blue-700 dark:hover:to-blue-800 text-white font-medium px-6 py-2.5 rounded-lg transition-all duration-200 shadow-sm;
   }
   
   .btn-secondary {
-    @apply bg-white border-2 border-blue-200 text-blue-700 hover:bg-blue-50 hover:border-blue-300 font-medium px-6 py-2.5 rounded-lg transition-all duration-200;
+    @apply bg-white dark:bg-gray-800 border-2 border-blue-200 dark:border-gray-600 text-blue-700 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-gray-700 hover:border-blue-300 dark:hover:border-gray-500 font-medium px-6 py-2.5 rounded-lg transition-all duration-200;
   }
   
   /* Card styles with light blue accents */
   .card {
-    @apply bg-white rounded-xl border border-blue-200 overflow-hidden shadow-sm;
+    @apply bg-white dark:bg-gray-800 rounded-xl border border-blue-200 dark:border-gray-700 overflow-hidden shadow-sm transition-colors duration-300;
   }
   
   .card-header {
-    @apply px-6 py-5 border-b border-blue-100;
+    @apply px-6 py-5 border-b border-blue-100 dark:border-gray-700;
   }
   
   .card-content {
@@ -88,33 +92,33 @@
   
   /* Loading spinner with blue theme */
   .spinner {
-    @apply animate-spin rounded-full border-3 border-blue-200 border-t-blue-600;
+    @apply animate-spin rounded-full border-3 border-blue-200 dark:border-gray-700 border-t-blue-600 dark:border-t-blue-400;
   }
   
   /* Enhanced gradient backgrounds */
   .gradient-blue {
-    @apply bg-gradient-to-r from-blue-500 to-blue-600;
+    @apply bg-gradient-to-r from-blue-500 to-blue-600 dark:from-blue-600 dark:to-blue-700;
   }
   
   .gradient-blue-light {
-    @apply bg-gradient-to-br from-blue-100 to-blue-200;
+    @apply bg-gradient-to-br from-blue-100 to-blue-200 dark:from-gray-800 dark:to-gray-700;
   }
   
   /* Typography with blue accents */
   .text-heading {
-    @apply text-xl font-bold text-gray-900;
+    @apply text-xl font-bold text-gray-900 dark:text-gray-100;
   }
   
   .text-subheading {
-    @apply text-lg font-semibold text-gray-900;
+    @apply text-lg font-semibold text-gray-900 dark:text-gray-100;
   }
   
   .text-body {
-    @apply text-sm text-blue-600;
+    @apply text-sm text-blue-600 dark:text-blue-400;
   }
   
   .text-caption {
-    @apply text-xs text-blue-600 font-medium;
+    @apply text-xs text-blue-600 dark:text-blue-400 font-medium;
   }
   
   /* Layout utilities */
@@ -134,29 +138,29 @@
   }
   
   .tab-button.active {
-    @apply border-blue-500 text-blue-600;
+    @apply border-blue-500 dark:border-blue-400 text-blue-600 dark:text-blue-400;
   }
   
   .tab-button.inactive {
-    @apply border-transparent text-gray-500 hover:text-blue-600 hover:border-blue-300;
+    @apply border-transparent text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:border-blue-300 dark:hover:border-blue-500;
   }
 
   /* Icon containers */
   .icon-container {
-    @apply w-12 h-12 rounded-xl flex items-center justify-center;
+    @apply w-12 h-12 rounded-xl flex items-center justify-center transition-colors duration-300;
   }
   
   .icon-container-primary {
-    @apply bg-blue-100 text-blue-600;
+    @apply bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400;
   }
   
   .icon-container-selected {
-    @apply bg-blue-500 text-white shadow-sm;
+    @apply bg-blue-500 dark:bg-blue-600 text-white shadow-sm;
   }
 
   /* Interactive elements */
   .interactive-card {
-    @apply bg-white rounded-xl border border-blue-200 p-6 text-center hover:shadow-md transition-all duration-200 cursor-pointer hover:border-blue-300;
+    @apply bg-white dark:bg-gray-800 rounded-xl border border-blue-200 dark:border-gray-700 p-6 text-center hover:shadow-md transition-all duration-200 cursor-pointer hover:border-blue-300 dark:hover:border-gray-600;
   }
 }
 
@@ -173,7 +177,7 @@
   
   /* Enhanced focus styles with blue theme */
   .focus-ring {
-    @apply focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2;
+    @apply focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:ring-offset-2 dark:focus:ring-offset-gray-900;
   }
   
   /* Smooth transitions */
@@ -185,17 +189,25 @@
   .shadow-blue {
     box-shadow: 0 4px 6px -1px rgba(59, 130, 246, 0.1), 0 2px 4px -1px rgba(59, 130, 246, 0.06);
   }
+
+  .dark .shadow-blue {
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.2);
+  }
   
   .shadow-blue-lg {
     box-shadow: 0 10px 15px -3px rgba(59, 130, 246, 0.1), 0 4px 6px -2px rgba(59, 130, 246, 0.05);
   }
 
+  .dark .shadow-blue-lg {
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -2px rgba(0, 0, 0, 0.3);
+  }
+
   /* Border utilities with blue theme */
   .border-blue-light {
-    @apply border border-blue-100;
+    @apply border border-blue-100 dark:border-gray-700;
   }
   
   .border-blue-medium {
-    @apply border border-blue-200;
+    @apply border border-blue-200 dark:border-gray-600;
   }
 }

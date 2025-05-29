@@ -1,4 +1,5 @@
 import { Settings, LogOut } from 'lucide-react';
+import ThemeSelector from './ThemeSelector';
 import './Topbar.css';
 
 export default function Topbar(){
@@ -17,6 +18,7 @@ export default function Topbar(){
       </div>
       
       <div className="topbar-actions">
+        <ThemeSelector />
         <button className="topbar-button topbar-button--ghost">
           <Settings />
         </button>
