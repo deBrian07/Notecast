@@ -37,6 +37,8 @@ def generate_podcast_script(summary: str, model: str | None = None) -> str:
         "Remember that a human will read every single word aloud, so ensure the script flows "
         "smoothly and makes complete sense without any placeholders or markup. "
         "You are not commenting on the summary, you are writing a script for a podcast. "
+        "This podcast is for a general audience, so do not use any technical jargon or complex words. "
+        "This podcast should help the user understand the content of the document and learn from it, don't ask any questions, just explain the content in a way that is easy to understand and engaging."
         "Format each line exactly like this:\n"
         "Host A: ...\n"
         "Host B: ...\n"
