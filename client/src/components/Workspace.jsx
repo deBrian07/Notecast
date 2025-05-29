@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react';
 import axios from 'axios';
+import ReactMarkdown from 'react-markdown';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { PlayCircle, Play, Pause, Volume2, Download, Share, MoreHorizontal, FileText, MessageSquare, Clock, Plus, FolderPlus, Folder, ArrowLeft, Trash2, Edit, Send, BookOpen, Mic } from 'lucide-react';
 import './Workspace.css';
 
@@ -51,6 +54,33 @@ export default function Workspace(){
     baseURL: 'https://api.infinia.chat',
     headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
   });
+
+  // Custom components for ReactMarkdown
+  const markdownComponents = {
+    code({node, inline, className, children, ...props}) {
+      const match = /language-(\w+)/.exec(className || '');
+      return !inline && match ? (
+        <SyntaxHighlighter
+          style={oneLight}
+          language={match[1]}
+          PreTag="div"
+          customStyle={{
+            margin: '12px 0',
+            borderRadius: '8px',
+            fontSize: '13px',
+            lineHeight: '1.4'
+          }}
+          {...props}
+        >
+          {String(children).replace(/\n$/, '')}
+        </SyntaxHighlighter>
+      ) : (
+        <code className={className} {...props}>
+          {children}
+        </code>
+      );
+    }
+  };
 
   // Load project-podcast mapping from localStorage
   useEffect(() => {
@@ -1202,7 +1232,7 @@ export default function Workspace(){
                             </div>
                             <div className="chat-message-body">
                               <div className={`chat-message-text ${message.error ? 'chat-message-text--error' : ''}`}>
-                                {message.content}
+                                <ReactMarkdown components={markdownComponents}>{message.content}</ReactMarkdown>
                               </div>
                               {message.sources && message.sources.length > 0 && (
                                 <div className="chat-message-sources">
