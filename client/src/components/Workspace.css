@@ -899,10 +899,18 @@
   margin-bottom: 8px;
 }
 
+.dark .sources-title {
+  color: #f9fafb;
+}
+
 .sources-subtitle {
   font-size: 16px;
   color: #3b82f6;
   font-weight: 500;
+}
+
+.dark .sources-subtitle {
+  color: #60a5fa;
 }
 
 .sources-upload {
