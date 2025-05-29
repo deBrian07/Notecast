@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import axios from 'axios';
-import { PlayCircle, Play, Pause, Volume2, Download, Share, MoreHorizontal, FileText, MessageSquare, Clock, Plus, FolderPlus, Folder, ArrowLeft, Trash2, Edit } from 'lucide-react';
+import { PlayCircle, Play, Pause, Volume2, Download, Share, MoreHorizontal, FileText, MessageSquare, Clock, Plus, FolderPlus, Folder, ArrowLeft, Trash2, Edit, Send, BookOpen, Mic } from 'lucide-react';
 import './Workspace.css';
 
 export default function Workspace(){
@@ -39,6 +39,13 @@ export default function Workspace(){
   const [currentSegmentIndex, setCurrentSegmentIndex] = useState(-1);
   const [timingCalibration, setTimingCalibration] = useState(1.0); // Calibration factor
   const [lastCalibrationTime, setLastCalibrationTime] = useState(0);
+
+  // Chat state
+  const [chatMessages, setChatMessages] = useState([]);
+  const [chatInput, setChatInput] = useState('');
+  const [chatLoading, setChatLoading] = useState(false);
+  const [projectInfo, setProjectInfo] = useState(null);
+  const [chatMessagesRef, setChatMessagesRef] = useState(null);
 
   const api = axios.create({
     baseURL: 'https://api.infinia.chat',
@@ -959,6 +966,92 @@ export default function Workspace(){
     console.log('Parsed script segments with improved timing:', segments);
   };
 
+  // Chat functions
+  const fetchProjectInfo = async (projectId) => {
+    try {
+      const response = await api.get(`/chat/project/${projectId}/info`);
+      setProjectInfo(response.data);
+    } catch (error) {
+      console.error('Error fetching project info:', error);
+      setProjectInfo(null);
+    }
+  };
+
+  const sendChatMessage = async () => {
+    if (!chatInput.trim() || !currentProject || chatLoading) return;
+    
+    const userMessage = {
+      role: 'user',
+      content: chatInput.trim()
+    };
+    
+    // Add user message to chat
+    const updatedMessages = [...chatMessages, userMessage];
+    setChatMessages(updatedMessages);
+    setChatInput('');
+    setChatLoading(true);
+    
+    try {
+      const response = await api.post('/chat', {
+        message: userMessage.content,
+        project_id: currentProject.id,
+        conversation_history: updatedMessages.slice(-10) // Send last 10 messages for context
+      });
+      
+      const assistantMessage = {
+        role: 'assistant',
+        content: response.data.message,
+        sources: response.data.sources
+      };
+      
+      setChatMessages([...updatedMessages, assistantMessage]);
+    } catch (error) {
+      console.error('Error sending chat message:', error);
+      
+      // Add error message
+      const errorMessage = {
+        role: 'assistant',
+        content: 'Sorry, I encountered an error while processing your message. Please try again.',
+        error: true
+      };
+      
+      setChatMessages([...updatedMessages, errorMessage]);
+    } finally {
+      setChatLoading(false);
+    }
+  };
+
+  const handleChatKeyPress = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendChatMessage();
+    }
+  };
+
+  const handleChatInputChange = (e) => {
+    setChatInput(e.target.value);
+    
+    // Auto-resize textarea
+    const textarea = e.target;
+    textarea.style.height = 'auto';
+    textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
+  };
+
+  // Auto-scroll chat messages to bottom
+  useEffect(() => {
+    if (chatMessagesRef) {
+      chatMessagesRef.scrollTop = chatMessagesRef.scrollHeight;
+    }
+  }, [chatMessages, chatLoading]);
+
+  // Load project info and clear chat when project changes
+  useEffect(() => {
+    if (currentProject && activeTab === 'chat') {
+      fetchProjectInfo(currentProject.id);
+      setChatMessages([]);
+    }
+  }, [currentProject, activeTab]);
+
   const renderTabContent = () => {
     switch (activeTab) {
       case 'sources':
@@ -1033,13 +1126,157 @@ export default function Workspace(){
       case 'chat':
         return (
           <div className="chat-tab-content">
-            <div className="chat-placeholder">
-              <div className="chat-empty-icon">
-                <MessageSquare />
+            {docs.length === 0 ? (
+              <div className="chat-empty-state">
+                <div className="chat-empty-icon">
+                  <MessageSquare />
+                </div>
+                <h3 className="chat-empty-title">No documents to chat with</h3>
+                <p className="chat-empty-text">Upload documents to your project first, then start chatting about their content</p>
               </div>
-              <h3 className="chat-empty-title">Chat Coming Soon</h3>
-              <p className="chat-empty-text">Interactive chat with your documents will be available here</p>
-            </div>
+            ) : (
+              <div className="chat-interface">
+                {/* Chat Header */}
+                <div className="chat-header">
+                  <div className="chat-header-content">
+                    <div className="chat-header-info">
+                      <h2 className="chat-title">Chat with your documents</h2>
+                      <p className="chat-subtitle">
+                        Ask questions about {docs.length} {docs.length === 1 ? 'document' : 'documents'} in this project
+                      </p>
+                    </div>
+                    <div className="chat-header-actions">
+                      <div className="chat-source-count">
+                        <BookOpen size={16} />
+                        {docs.length} sources
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Chat Messages */}
+                <div className="chat-messages" ref={setChatMessagesRef}>
+                  {chatMessages.length === 0 ? (
+                    <div className="chat-welcome">
+                      <div className="chat-welcome-icon">
+                        <MessageSquare />
+                      </div>
+                      <h3 className="chat-welcome-title">Start a conversation</h3>
+                      <p className="chat-welcome-text">
+                        Ask me anything about your documents. I can help explain concepts, summarize content, or answer specific questions.
+                      </p>
+                      <div className="chat-suggestions">
+                        <button 
+                          className="chat-suggestion"
+                          onClick={() => setChatInput("What are the main topics covered in these documents?")}
+                        >
+                          What are the main topics covered?
+                        </button>
+                        <button 
+                          className="chat-suggestion"
+                          onClick={() => setChatInput("Can you summarize the key points?")}
+                        >
+                          Summarize the key points
+                        </button>
+                        <button 
+                          className="chat-suggestion"
+                          onClick={() => setChatInput("What are the most important concepts I should understand?")}
+                        >
+                          What should I focus on?
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="chat-conversation">
+                      {chatMessages.map((message, index) => (
+                        <div key={index} className={`chat-message chat-message--${message.role}`}>
+                          <div className="chat-message-content">
+                            <div className="chat-message-avatar">
+                              {message.role === 'user' ? (
+                                <div className="chat-avatar chat-avatar--user">You</div>
+                              ) : (
+                                <div className="chat-avatar chat-avatar--assistant">
+                                  <Mic size={16} />
+                                </div>
+                              )}
+                            </div>
+                            <div className="chat-message-body">
+                              <div className={`chat-message-text ${message.error ? 'chat-message-text--error' : ''}`}>
+                                {message.content}
+                              </div>
+                              {message.sources && message.sources.length > 0 && (
+                                <div className="chat-message-sources">
+                                  <div className="chat-sources-header">
+                                    <BookOpen size={14} />
+                                    Sources
+                                  </div>
+                                  <div className="chat-sources-list">
+                                    {message.sources.map((source, sourceIndex) => (
+                                      <div key={sourceIndex} className="chat-source-item">
+                                        <div className="chat-source-name">{source.filename}</div>
+                                        <div className="chat-source-excerpt">{source.excerpt}</div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                      {chatLoading && (
+                        <div className="chat-message chat-message--assistant">
+                          <div className="chat-message-content">
+                            <div className="chat-message-avatar">
+                              <div className="chat-avatar chat-avatar--assistant">
+                                <Mic size={16} />
+                              </div>
+                            </div>
+                            <div className="chat-message-body">
+                              <div className="chat-loading">
+                                <div className="chat-loading-dots">
+                                  <span></span>
+                                  <span></span>
+                                  <span></span>
+                                </div>
+                                <span className="chat-loading-text">Thinking...</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Chat Input */}
+                <div className="chat-input-container">
+                  <div className="chat-input-wrapper">
+                    <textarea
+                      value={chatInput}
+                      onChange={handleChatInputChange}
+                      onKeyDown={handleChatKeyPress}
+                      placeholder="Ask a question about your documents..."
+                      className="chat-input"
+                      rows={1}
+                      disabled={chatLoading}
+                    />
+                    <button
+                      onClick={sendChatMessage}
+                      disabled={!chatInput.trim() || chatLoading}
+                      className="chat-send-button"
+                    >
+                      <Send size={18} />
+                    </button>
+                  </div>
+                  <div className="chat-input-footer">
+                    <span className="chat-input-hint">
+                      Press Enter to send, Shift+Enter for new line
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         );
 
