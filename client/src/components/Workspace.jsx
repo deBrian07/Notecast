@@ -2,11 +2,13 @@ import { useEffect, useState } from 'react';
 import axios from 'axios';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { oneLight, oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { PlayCircle, Play, Pause, Volume2, Download, Share, MoreHorizontal, FileText, MessageSquare, Clock, Plus, FolderPlus, Folder, ArrowLeft, Trash2, Edit, Send, BookOpen, Mic } from 'lucide-react';
+import { useTheme } from '@/contexts/ThemeContext';
 import './Workspace.css';
 
 export default function Workspace(){
+  const { effectiveTheme } = useTheme();
   const [selected, setSelected] = useState(null);
   const [loading, setLoading] = useState(false);
   const [audio, setAudio] = useState('');
@@ -61,7 +63,7 @@ export default function Workspace(){
       const match = /language-(\w+)/.exec(className || '');
       return !inline && match ? (
         <SyntaxHighlighter
-          style={oneLight}
+          style={effectiveTheme === 'dark' ? oneDark : oneLight}
           language={match[1]}
           PreTag="div"
           customStyle={{
