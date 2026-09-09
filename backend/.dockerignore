@@ -1,0 +1,11 @@
+venv
+.venv
+data
+__pycache__
+*.pyc
+.env
+.pytest_cache
+speaker_samples
+sample.mp3
+alembic
+*.md
