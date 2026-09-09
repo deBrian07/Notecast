@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
-import axios from 'axios';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneLight, oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { PlayCircle, Play, Pause, Volume2, Download, Share, MoreHorizontal, FileText, MessageSquare, Clock, Plus, FolderPlus, Folder, ArrowLeft, Trash2, Edit, Send, BookOpen, Mic } from 'lucide-react';
 import { useTheme } from '@/contexts/ThemeContext';
+import { createApi } from '@/api';
 import './Workspace.css';
 
 export default function Workspace(){
@@ -52,10 +52,7 @@ export default function Workspace(){
   const [projectInfo, setProjectInfo] = useState(null);
   const [chatMessagesRef, setChatMessagesRef] = useState(null);
 
-  const api = axios.create({
-    baseURL: 'https://api.infinia.chat',
-    headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
-  });
+  const api = createApi(true);
 
   // Custom components for ReactMarkdown
   const markdownComponents = {
@@ -133,32 +130,14 @@ export default function Workspace(){
       const response = await api.get('/projects');
       const backendProjects = response.data;
       
-      // Convert backend projects to frontend format and add podcast status
-      const projectsWithPodcastStatus = await Promise.all(
-        backendProjects.map(async (project) => {
-          const podcastId = getProjectPodcastId(project.id);
-          let hasPodcast = false;
-          
-          if (podcastId) {
-            try {
-              const podcastResponse = await api.get('/generate');
-              const allPodcasts = podcastResponse.data;
-              hasPodcast = allPodcasts.some(p => p.id === podcastId && p.audio_filename);
-            } catch (error) {
-              console.error('Error checking podcast status:', error);
-            }
-          }
-          
-          return {
-            id: project.id,
-            name: project.name,
-            description: project.description,
-            created_at: project.created_at,
-            document_count: project.document_count,
-            has_podcast: hasPodcast
-          };
-        })
-      );
+      const projectsWithPodcastStatus = backendProjects.map((project) => ({
+        id: project.id,
+        name: project.name,
+        description: project.description,
+        created_at: project.created_at,
+        document_count: project.document_count,
+        has_podcast: (project.podcast_count || 0) > 0 || Boolean(getProjectPodcastId(project.id))
+      }));
       
       setProjects(projectsWithPodcastStatus);
       
@@ -243,7 +222,9 @@ export default function Workspace(){
       const allPodcasts = response.data;
       
       const podcastId = getProjectPodcastId(project.id);
-      const hasPodcast = podcastId && allPodcasts.some(p => p.id === podcastId && p.audio_filename);
+      const hasPodcast = allPodcasts.some(p => p.audio_filename && (
+        p.project_id === project.id || p.id === podcastId
+      ));
       
       const updatedProject = { ...project, has_podcast: hasPodcast };
       
@@ -663,29 +644,32 @@ export default function Workspace(){
       const documentId = docs[0].id;
       await api.post(`/generate/${documentId}`);
 
-      // Poll every 3s for completion
       let newPodcast = null;
-      while (!newPodcast) {
+      const maxAttempts = 200;
+      for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
         await new Promise(r => setTimeout(r, 3000));
         const list = (await api.get('/generate')).data;
-        
-        console.log('Polling for new podcast...');
-        
-        // Find the most recent podcast for this document that has audio
         const matchingPods = list
-          .filter(p => p.document_id === documentId && p.audio_filename)
-          .sort((a, b) => b.id - a.id); // Sort by ID descending (most recent first)
+          .filter(p => (
+            (p.project_id === currentProject.id || p.document_id === documentId) &&
+            p.audio_filename
+          ))
+          .sort((a, b) => b.id - a.id);
         
         if (matchingPods.length > 0) {
           newPodcast = matchingPods[0];
-          console.log('Found new podcast:', newPodcast);
+          break;
         }
       }
 
-      // Associate the new podcast with this project
+      if (!newPodcast) {
+        alert('Podcast generation timed out. Check that Ollama is running and try again.');
+        setLoading(false);
+        return;
+      }
+
       setProjectPodcastId(currentProject.id, newPodcast.id);
       
-      // Update project status
       const updatedProject = { ...currentProject, has_podcast: true };
       const updatedProjects = projects.map(p => 
         p.id === currentProject.id ? updatedProject : p
@@ -694,10 +678,9 @@ export default function Workspace(){
       setProjects(updatedProjects);
       setCurrentProject(updatedProject);
       
-      // Fetch the script for the new podcast
+      const res = await api.get(`/generate/${newPodcast.id}/audio`, { responseType: 'blob' });
+      setAudio(URL.createObjectURL(res.data));
       await fetchPodcastScript(newPodcast.id);
-      
-      console.log(`New podcast generated successfully for project "${currentProject.name}". Use Load button to play it.`);
       
     } catch (error) {
       console.error('Error generating podcast:', error);
@@ -784,19 +767,13 @@ export default function Workspace(){
     setLoading(true);
 
     try {
-      // Check if this project has a mapped podcast ID
-      const podcastId = getProjectPodcastId(currentProject.id);
-      
-      if (!podcastId) {
-        console.log('No podcast mapping found for this project');
-        alert('No existing podcast found for this project. Please generate a new one.');
-        setLoading(false);
-        return;
-      }
-
-      // Get all podcasts to verify the mapped podcast still exists
       const list = (await api.get('/generate')).data;
-      const podcast = list.find(p => p.id === podcastId && p.audio_filename);
+      const mappedId = getProjectPodcastId(currentProject.id);
+      const podcast = list
+        .filter(p => p.audio_filename && (
+          p.project_id === currentProject.id || p.id === mappedId
+        ))
+        .sort((a, b) => b.id - a.id)[0];
       
       if (!podcast) {
         console.log('Mapped podcast no longer exists in database');
@@ -1137,7 +1114,7 @@ export default function Workspace(){
                             {doc.orig_filename}
                           </p>
                           <p className="sources-document-meta">
-                            PDF • {new Date(doc.created_at).toLocaleDateString()}
+                            {doc.file_type?.toUpperCase() || 'PDF'} • {new Date(doc.upload_date || doc.created_at).toLocaleDateString()}
                           </p>
                         </div>
                       </div>
@@ -1361,7 +1338,16 @@ export default function Workspace(){
                         <h3 className="audio-player-title">{currentProject?.name}</h3>
                         <div className="audio-player-meta">
                           <span className="audio-player-duration">{formatTime(duration)} • English</span>
-                          <button className="workspace-button">
+                          <button
+                            className="workspace-button"
+                            onClick={() => {
+                              if (!audio) return;
+                              const link = document.createElement('a');
+                              link.href = audio;
+                              link.download = `${currentProject?.name || 'podcast'}.mp3`;
+                              link.click();
+                            }}
+                          >
                             <Download />
                             Download
                           </button>

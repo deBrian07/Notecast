@@ -1,29 +1,33 @@
 import io
-from fastapi import APIRouter, HTTPException
+
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+
+from core.security import get_current_user
+from models.user import User
 from services.tts import synthesize_podcast_audio
-from core.config import settings
+
 
 class TTSRequest(BaseModel):
-    voice: str
+    voice: str = "female"
     text: str
+
 
 router = APIRouter()
 
+
 @router.post("/tts", response_class=StreamingResponse)
-def tts_endpoint(req: TTSRequest):
+def tts_endpoint(req: TTSRequest, current_user: User = Depends(get_current_user)):
     try:
-        # we don’t yet have user/doc tracking here, so pass dummy IDs
-        filepath, _ = synthesize_podcast_audio(
-            user_id=0,             # or pull from token if you like
+        prefix = "Host A: " if req.voice.lower().startswith("f") else "Host B: "
+        filepath, _duration, _timings = synthesize_podcast_audio(
+            user_id=current_user.id,
             doc_id=0,
-            script=req.text
+            script=prefix + req.text,
         )
-        # read the mp3 and stream it
-        with open(filepath, "rb") as f:
-            data = f.read()
+        with open(filepath, "rb") as handle:
+            data = handle.read()
         return StreamingResponse(io.BytesIO(data), media_type="audio/mpeg")
-    except Exception as e:
-        # full traceback will be in your logs because of WatchFiles + exceptions
-        raise HTTPException(500, f"TTS failed: {e}")
+    except Exception as error:
+        raise HTTPException(500, f"TTS failed: {error}")

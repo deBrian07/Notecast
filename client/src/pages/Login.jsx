@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import axios from 'axios';
 import { LogIn, UserPlus, Eye, EyeOff } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { createApi } from '@/api';
 import './Login.css';
 
 export default function Login() {
@@ -12,9 +12,7 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const nav = useNavigate();
-
-  // axios instance
-  const api = axios.create({ baseURL: 'https://api.infinia.chat' });
+  const api = createApi();
 
   async function handleLogin() {
     setIsLoading(true);

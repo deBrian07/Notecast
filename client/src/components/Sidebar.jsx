@@ -1,16 +1,12 @@
 import { useEffect, useState } from 'react';
-import axios from 'axios';
 import { FileText, Plus } from 'lucide-react';
+import { createApi } from '@/api';
 import './Sidebar.css';
 
 export default function Sidebar(){
   const [docs, setDocs] = useState([]);
   const [selectedDoc, setSelectedDoc] = useState(null);
-  
-  const api = axios.create({ 
-    baseURL: 'https://api.infinia.chat', 
-    headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
-  });
+  const api = createApi(true);
   
   useEffect(() => { 
     api.get('/documents').then(r => setDocs(r.data)); 

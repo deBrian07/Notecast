@@ -151,7 +151,7 @@ async def get_project_info(
             {
                 "id": doc.id,
                 "filename": doc.orig_filename,
-                "created_at": doc.created_at.isoformat() if doc.created_at else None
+                "created_at": doc.upload_date.isoformat() if doc.upload_date else None
             }
             for doc in documents
         ]

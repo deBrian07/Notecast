@@ -1,6 +1,6 @@
 import os
 
-from pytest import Session
+from sqlalchemy.orm import Session
 from models.database import get_db
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from fastapi.responses import FileResponse
@@ -8,7 +8,7 @@ from typing import List
 from sqlalchemy import text
 from core.security import get_current_user
 from models.user import User
-from models.document import get_document_by_id
+from models.document import get_document_by_id, get_documents_for_project
 from models.podcast import Podcast, create_podcast, get_podcasts_for_user, get_podcast_by_id
 from models.schemas import PodcastBase
 from services.file_service import get_document_text
@@ -156,6 +156,7 @@ def list_podcasts(db: Session = Depends(get_db),
             pod_dict = {
                 "id": pod.id,
                 "title": pod.title,
+                "project_id": pod.project_id,
                 "document_id": pod.document_id,
                 "audio_filename": pod.audio_filename,
                 "duration": pod.duration
@@ -326,38 +327,43 @@ def fetch_podcast_script(podcast_id: int, current_user: User = Depends(get_curre
 
 def _process_generation(user_id: int, doc):
     print(f"Starting podcast generation for document ID: {doc.id}, user ID: {user_id}")
-    
-    # 1. Extract text
-    text = get_document_text(user_id, doc.stored_filename)
-    print(f"Extracted text length: {len(text)} characters")
-    
-    # 2. Generate script
-    summary = generate_summary(text)
-    script  = generate_podcast_script(summary)
-    print(f"Generated script length: {len(script)} characters")
-    
-    # 3. Produce audio with timing data
-    audio_path, duration, segment_timings = synthesize_podcast_audio(user_id, doc.id, script)
-    print(f"Generated audio at: {audio_path}, duration: {duration}s")
-    print(f"Generated {len(segment_timings)} timing segments")
-    
-    # 4. Store record with timing data
-    title = f"Podcast of {doc.orig_filename}"
-    print(f"Creating podcast record with title: {title}, document_id: {doc.id}, project_id: {doc.project_id}")
-    
-    # Make sure document_id is an integer
-    doc_id = int(doc.id)
-    project_id = int(doc.project_id)
-    
-    podcast = create_podcast(
-        project_id=project_id,
-        document_id=doc_id,
-        title=title,
-        script_text=script,
-        audio_filename=audio_path,
-        duration=duration,
-        segment_timings=segment_timings
-    )
-    
-    print(f"Podcast created successfully with ID: {podcast.id if hasattr(podcast, 'id') else 'Unknown'}")
-    print(f"Stored timing data for {len(segment_timings)} segments")
+    try:
+        documents = get_documents_for_project(doc.project_id) or [doc]
+        texts = []
+        for item in documents:
+            try:
+                extracted = get_document_text(user_id, item.stored_filename)
+                if extracted.strip():
+                    texts.append(f"Document: {item.orig_filename}\n{extracted}")
+            except Exception as extract_error:
+                print(f"Skipping document {item.id}: {extract_error}")
+
+        if not texts:
+            print("No document text extracted; aborting generation")
+            return
+
+        text = "\n\n---\n\n".join(texts)
+        print(f"Extracted text length: {len(text)} characters from {len(texts)} document(s)")
+
+        summary = generate_summary(text)
+        script = generate_podcast_script(summary)
+        print(f"Generated script length: {len(script)} characters")
+
+        audio_path, duration, segment_timings = synthesize_podcast_audio(user_id, doc.id, script)
+        print(f"Generated audio at: {audio_path}, duration: {duration}s")
+
+        title = f"Podcast of {doc.orig_filename}"
+        podcast = create_podcast(
+            project_id=int(doc.project_id),
+            document_id=int(doc.id),
+            title=title,
+            script_text=script,
+            audio_filename=audio_path,
+            duration=duration,
+            segment_timings=segment_timings,
+        )
+        print(f"Podcast created successfully with ID: {getattr(podcast, 'id', 'Unknown')}")
+    except Exception as error:
+        print(f"Podcast generation failed: {error}")
+        import traceback
+        traceback.print_exc()

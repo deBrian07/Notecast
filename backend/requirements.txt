@@ -3,13 +3,12 @@ uvicorn[standard]
 python-multipart
 SQLAlchemy
 pydantic
+pydantic-settings
+email-validator
 passlib[bcrypt]
 python-jose[cryptography]
 requests
 PyPDF2
 python-docx
 pydub
-nemo-toolkit[tts]
-torch
-torchaudio
-soundfile
+edge-tts

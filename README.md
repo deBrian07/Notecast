@@ -1,242 +1,110 @@
 # Notecast
 
-Notecast is a NotebookLM alternative AI knowledge base.
-<div align="center">
-<img src="https://github.com/user-attachments/assets/57bcc57d-5331-47a1-8ec9-1aeea4788c05" alt="Alt Text" style="width:45%; height:auto;">
-</div>
+Turn documents into a two-host podcast and chat with them. A small NotebookLM-style app: React frontend + FastAPI backend, with Ollama for language and Edge TTS for audio.
 
-## 🚀 Quick Start
+## What you need
 
-### Prerequisites
+- Python 3.10+
+- Node.js 18+
+- [Ollama](https://ollama.com)
+- [ffmpeg](https://ffmpeg.org) (for podcast MP3s)
 
-- **Python 3.8+** (for backend)
-- **Node.js 16+** (for frontend)
-- **Git**
+You do **not** need a GPU for the default setup.
 
-### 1. Clone the Repository
+## Setup
+
+### 1. Ollama
 
 ```bash
-git clone https://github.com/deBrian07/Notecast.git
-cd Notecast
+ollama pull llama3.2
 ```
 
-### 2. Backend Setup
+Leave the Ollama app running.
+
+### 2. Backend
 
 ```bash
-# Navigate to backend directory
 cd backend
-
-# Create virtual environment
 python -m venv venv
-
-# Activate virtual environment
-# On Linux/Mac:
-source venv/bin/activate
-# On Windows:
-# venv\Scripts\activate
-
-# Install dependencies
+source venv/bin/activate   # Windows: venv\Scripts\activate
 pip install -r requirements.txt
-
-# Create environment file
-cp .env.example .env  # or create manually (see Environment Variables section)
-
-# Initialize database
-python create_db.py
-
-# Start the backend server
+cp .env.example .env
 python app.py
 ```
 
-The backend will be available at `http://localhost:8000`
+API: [http://localhost:8000](http://localhost:8000)  
+Docs: [http://localhost:8000/docs](http://localhost:8000/docs)
 
-### 3. Frontend Setup
+The database is created on first start (`backend/data/notecast.db`).
+
+### 3. Frontend
 
 ```bash
-# Navigate to client directory (from project root)
 cd client
-
-# Install dependencies
 npm install
-
-# Start the development server
+cp .env.example .env
 npm run dev
 ```
 
-The frontend will be available at `http://localhost:5173`
+App: [http://localhost:5173](http://localhost:5173)
 
-## 🔧 Environment Variables
+## Use it
 
-Create a `.env` file in the `backend` directory with the following variables:
+1. Register / log in
+2. Create a project
+3. Upload a PDF or DOCX
+4. Chat with the documents, or generate a podcast in Studio
+
+Generation can take a few minutes. The UI polls until the audio is ready, then loads it.
+
+## Config
+
+`backend/.env` (see `.env.example`):
+
+| Variable | Default | Notes |
+|---|---|---|
+| `OLLAMA_URL` | `http://127.0.0.1:11434` | Local Ollama |
+| `OLLAMA_MODEL` | `llama3.2` | Any model you have pulled |
+| `TTS_ENGINE` | `edge` | `edge` (no GPU) or `nemo` (CUDA) |
+| `TTS_VOICE_FEMALE` | `en-US-AriaNeural` | Edge voice name |
+| `TTS_VOICE_MALE` | `en-US-GuyNeural` | Edge voice name |
+| `SECRET_KEY` | `change-me-in-production` | Change this before you deploy |
+
+`client/.env`:
 
 ```env
-# Database
-DATABASE_URL=sqlite:///./data/notecast.db
-
-# Security
-SECRET_KEY=your-super-secret-key-here
-ALGORITHM=HS256
-ACCESS_TOKEN_EXPIRE_MINUTES=60
-
-# Directories
-UPLOAD_DIR=./data/uploads
-TEXT_DIR=./data/text
-PODCAST_DIR=./data/podcasts
-
-# AI/LLM Configuration
-OLLAMA_URL=http://localhost:11434
-OLLAMA_MODEL=llama2
-
-# Text-to-Speech Configuration
-TTS_VOICE_FEMALE=ljspeech
-TTS_VOICE_MALE=male_voice
-TTS_SAMPLE_RATE=22050
-
-# Development
-DEBUG=true
+VITE_API_URL=http://localhost:8000
 ```
 
-## 📁 Project Structure
+Health check: [http://localhost:8000/health](http://localhost:8000/health) reports whether Ollama is reachable.
 
-```
-Notecast/
-├── backend/                 # FastAPI backend
-│   ├── models/             # Database models
-│   ├── routers/            # API routes
-│   ├── services/           # Business logic
-│   ├── core/               # Configuration and security
-│   ├── data/               # Database and file storage
-│   ├── alembic/            # Database migrations
-│   ├── app.py              # Main application entry point
-│   └── requirements.txt    # Python dependencies
-├── client/                 # React frontend
-│   ├── src/                # Source code
-│   ├── public/             # Static assets
-│   ├── package.json        # Node.js dependencies
-│   └── vite.config.js      # Vite configuration
-└── README.md
-```
+## Optional GPU TTS
 
-## 🛠 Development
-
-### Backend Development
+If you have an NVIDIA GPU and want NeMo voices:
 
 ```bash
 cd backend
-
-# Run with auto-reload
-python app.py
-
-# Run database migrations
-alembic upgrade head
-
-# Create new migration
-alembic revision --autogenerate -m "Description"
+pip install -r requirements-gpu.txt
 ```
 
-### Frontend Development
+Set in `.env`:
 
-```bash
-cd client
-
-# Development server with hot reload
-npm run dev
-
-# Build for production
-npm run build
-
-# Preview production build
-npm run serve
+```env
+TTS_ENGINE=nemo
+TTS_VOICE_FEMALE=female_dainty
+TTS_VOICE_MALE=male_deep
 ```
 
-## 📚 API Documentation
+## Troubleshooting
 
-Once the backend is running, visit:
-- **Swagger UI**: `http://localhost:8000/docs`
-- **ReDoc**: `http://localhost:8000/redoc`
+**Frontend cannot reach the API.** Check `client/.env` has `VITE_API_URL=http://localhost:8000` and restart `npm run dev`.
 
-## 🎯 Features
+**Podcast generation hangs, then times out.** `curl http://localhost:8000/health` — `ollama` should be `true`. Confirm `ollama pull llama3.2` finished.
 
-- **Document Upload**: Support for PDF and DOCX files
-- **AI-Powered Content Generation**: Convert documents to podcast scripts
-- **Text-to-Speech**: Generate audio from text with multiple voice options
-- **User Authentication**: Secure user registration and login
-- **Project Management**: Organize documents and podcasts into projects
-- **Modern UI**: Responsive design with Tailwind CSS
+**TTS fails.** Install ffmpeg (`brew install ffmpeg` on macOS) and confirm `TTS_ENGINE=edge`.
 
-## 🔍 Usage
+**Wrong API in the browser.** Old builds pointed at `https://api.infinia.chat`. Use the `.env` value above.
 
-1. **Register/Login**: Create an account or sign in
-2. **Create Project**: Organize your work into projects
-3. **Upload Documents**: Add PDF or DOCX files to your project
-4. **Generate Podcast**: Convert documents to podcast scripts using AI
-5. **Text-to-Speech**: Generate audio files from your scripts
-6. **Download**: Get your finished podcast files
+## License
 
-## 🐛 Troubleshooting
-
-### Common Issues
-
-**Backend won't start:**
-- Check if all environment variables are set
-- Ensure Python virtual environment is activated
-- Verify all dependencies are installed: `pip install -r requirements.txt`
-
-**Frontend won't start:**
-- Check Node.js version: `node --version` (should be 16+)
-- Clear node_modules and reinstall: `rm -rf node_modules && npm install`
-- Check if port 5173 is available
-
-**Database issues:**
-- Run `python create_db.py` to initialize the database
-- Check if `data` directory exists and is writable
-
-**TTS not working:**
-- Ensure TTS models are properly installed
-- Check TTS configuration in environment variables
-
-## 🚀 Production Deployment
-
-### Backend
-
-```bash
-# Install production dependencies
-pip install gunicorn
-
-# Run with Gunicorn
-gunicorn app:app -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
-```
-
-### Frontend
-
-```bash
-# Build for production
-npm run build
-
-# Serve static files (dist folder) with your preferred web server
-```
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature-name`
-3. Make your changes
-4. Run tests (if available)
-5. Commit your changes: `git commit -m 'Add feature'`
-6. Push to the branch: `git push origin feature-name`
-7. Submit a pull request
-
-## 📄 License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## 🆘 Support
-
-If you encounter any issues or have questions:
-1. Check the troubleshooting section above
-2. Search existing issues in the repository
-3. Create a new issue with detailed information about your problem
-
----
-
-**Happy podcasting! 🎙️**
+MIT
