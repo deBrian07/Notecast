@@ -60,6 +60,8 @@ def get_cors_origins() -> List[str]:
     defaults = [
         "http://localhost:5173",
         "http://127.0.0.1:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
         "https://notecast.infinia.chat",
     ]
     extra = [origin.strip() for origin in settings.cors_origins.split(",") if origin.strip()]

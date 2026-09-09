@@ -1,6 +1,7 @@
 import axios from 'axios';
 
-export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const raw = import.meta.env.VITE_API_URL;
+export const API_BASE_URL = raw === undefined ? 'http://localhost:8000' : raw;
 
 export function createApi(withAuth = false) {
   const headers = {};
